@@ -1,18 +1,11 @@
 DexBaileys
-Maintained by Shyam Chaudhari (DEX SHYAM TECH).
+Copyright (c) 2026 Shyam Chaudhari (DEX SHYAM TECH)
 
-DexBaileys is based on Baileys by Rajeh Taher / WhiskeySockets
-(https://github.com/WhiskeySockets/Baileys, MIT), taken at commit bb0a87e.
+DexBaileys is maintained and published by Shyam Chaudhari.
 
-It also includes selected MIT-licensed changes from RedxBaileys by
-Abdul Rehman Rajpoot (https://github.com/AbdulRehman19721986/RedxBaileys,
-commit 037e37d), which itself credits StableBail by Team Qadeer
-(https://github.com/Qadeer-Xtech/stablebail).
+GitHub:  https://github.com/Dexsam07/DexBaileys
+Channel: https://whatsapp.com/channel/0029VbBgXTsKwqSKZKy38w2o
 
-v1.1 adapts, rewritten in TypeScript, the interactive message
-(buttons / list / native flow / carousel) approach of itsliaaa/baileys
-(https://github.com/itsliaaa/baileys, commit b07993d) and the reconnect and
-pairing fixes of chaeulso/baileys
-(https://github.com/chaeulso/baileys, commit 64521ae), both MIT licensed.
+Released under the MIT License. See the LICENSE file.
 
-The original MIT copyright notice and licence terms are kept in LICENSE.
+DexBaileys is not affiliated with, authorized by, or endorsed by WhatsApp or Meta.

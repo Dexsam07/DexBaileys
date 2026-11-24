@@ -317,6 +317,6 @@ Use responsibly and in accordance with WhatsApp's Terms of Service. Button, caro
 
 **DexBaileys v1.2.1** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
 
-MIT licence · attribution in [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
+MIT licence · see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
 
 </div>
