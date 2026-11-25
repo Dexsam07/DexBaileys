@@ -121,6 +121,22 @@ export type BaileysEventMap = {
 		reaction: { code?: string; count?: number; removed?: boolean }
 	}
 	'newsletter.view': { id: string; server_id: string; count: number }
+	/** a channel status pushed by the server: text/media post, reaction or delete, with its counters */
+	'newsletter.status': {
+		id: string
+		messageId?: string
+		server_id?: string
+		type?: string
+		timestamp?: number
+		revoked: boolean
+		mediaType?: string
+		message?: proto.IMessage
+		reaction?: string
+		viewsCount?: number
+		responsesCount?: number
+		reactions: { code: string; count: number }[]
+		editedAt?: number
+	}
 	'newsletter-participants.update': { id: string; author: string; user: string; new_role: string; action: string }
 	'newsletter-settings.update': { id: string; update: any }
 

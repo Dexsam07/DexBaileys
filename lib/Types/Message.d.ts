@@ -88,6 +88,8 @@ type Contextable = {
 };
 type ViewOnce = {
     viewOnce?: boolean;
+    /** experimental: hide the content behind a tap-to-reveal blur */
+    spoiler?: boolean;
 };
 type Editable = {
     edit?: WAMessageKey;
@@ -103,6 +105,14 @@ export type PollMessageOptions = {
     /** 32 byte message secret to encrypt poll selections */
     messageSecret?: Uint8Array;
     toAnnouncementGroup?: boolean;
+    /** makes the poll a quiz: the option (one of `values`) that is the right answer */
+    correctAnswer?: string;
+    /** hide who voted for what (newer WhatsApp versions only) */
+    hideVoter?: boolean;
+    /** let members add their own options (newer WhatsApp versions only) */
+    canAddOption?: boolean;
+    /** the poll closes at this time */
+    endDate?: Date;
 };
 export type EventMessageOptions = {
     name: string;

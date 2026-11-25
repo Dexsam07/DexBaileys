@@ -11,13 +11,16 @@ import type {
 	WAMessageKey
 } from '../Types'
 import {
+	addStickerExif,
 	assertViewOnceDownloadable,
 	type AutoStatusOptions,
 	buildStickerReaction,
 	createAutoStatus,
 	createDeleteWatcher,
 	createGroupCache,
+	createHealthMonitor,
 	createReactionTap,
+	createScheduler,
 	createSendQueue,
 	delay,
 	type DeletedMessageEvent,
@@ -39,11 +42,15 @@ import {
 	resolveUserJids,
 	type SendQueueOptions,
 	serializeMessage,
+	type StickerExifOptions,
 	type StickerWebpOptions,
+	typewriterFrames,
 	typingDelayFor,
 	type TypingOptions,
 	type ViewOnceMediaType
 } from '../Utils'
+import { isLidUser, isPnUser, jidNormalizedUser } from '../WABinary'
+import { USyncQuery, USyncUser } from '../WAUSync'
 import { makeCommunitiesSocket } from './communities'
 
 export type StickerReactionOptions = {
@@ -59,11 +66,13 @@ export type StickerReactionOptions = {
 
 export type StickerTapOptions = ReactionTapOptions & StickerReactionOptions
 
+export type UsernameResult = { username: string; jid: string; lid?: string; pn?: string; exists: boolean }
+
 export type AlbumItem = Extract<AnyMediaMessageContent, { image: WAMediaUpload } | { video: WAMediaUpload }>
 
 type DexBase = Pick<
 	ReturnType<typeof makeCommunitiesSocket>,
-	'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus'
+	'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus' | 'executeUSyncQuery'
 >
 
 /** the DexBaileys helper methods, bound to a socket */
@@ -155,7 +164,139 @@ export const makeDexHelpers = (sock: DexBase, logger: SocketConfig['logger'], sh
 		return ids
 	}
 
+	const scheduler = createScheduler((jid, content, options) => sock.sendMessage(jid, content, options))
+	const health = createHealthMonitor(sock.ev)
+	const usernames = new Map<string, { at: number; value: UsernameResult | null }>()
+
 	return {
+		/**
+		 * Send a sticker carrying your pack name and author. A photo, GIF or
+		 * short video Buffer is converted to a sticker first.
+		 */
+		sendSticker: async (
+			jid: string,
+			sticker: Buffer,
+			options: MiscMessageGenerationOptions & StickerExifOptions & { convert?: StickerWebpOptions } = {}
+		) => {
+			const { pack, author, emojis, packId, convert, ...sendOptions } = options
+			if (!Buffer.isBuffer(sticker)) throw new Boom('sendSticker needs a Buffer', { statusCode: 400 })
+			const made = isWebp(sticker)
+				? { data: sticker, isAnimated: isAnimatedWebp(sticker) }
+				: await makeStickerWebp(sticker, convert)
+			const data =
+				pack || author || emojis?.length ? addStickerExif(made.data, { pack, author, emojis, packId }) : made.data
+			return sock.sendMessage(jid, { sticker: data, isAnimated: made.isAnimated }, sendOptions)
+		},
+
+		/** send a message that deletes itself for everyone after `seconds` */
+		sendSelfDestruct: async (
+			jid: string,
+			content: AnyMessageContent,
+			seconds: number,
+			options: MiscMessageGenerationOptions = {}
+		) => {
+			if (!(seconds > 0) || seconds > 172800) {
+				throw new Boom('sendSelfDestruct needs 1 to 172800 seconds (2 days)', { statusCode: 400 })
+			}
+
+			const message = await sock.sendMessage(jid, content, options)
+			let timer: ReturnType<typeof setTimeout> | undefined
+			const done = new Promise<boolean>(resolve => {
+				timer = setTimeout(() => {
+					timer = undefined
+					sock.sendMessage(jid, { delete: message!.key }).then(
+						() => resolve(true),
+						() => resolve(false)
+					)
+				}, seconds * 1000)
+				timer.unref?.()
+			})
+			return {
+				message,
+				/** resolves true once the message was deleted */
+				done,
+				/** keep the message after all */
+				cancel: () => {
+					if (!timer) return false
+					clearTimeout(timer)
+					timer = undefined
+					return true
+				}
+			}
+		},
+
+		/** the text appears piece by piece: one message that is edited until it is complete */
+		sendTypewriter: async (
+			jid: string,
+			text: string,
+			options: MiscMessageGenerationOptions & { steps?: number; delayMs?: number } = {}
+		) => {
+			const { steps = 6, delayMs = 700, ...sendOptions } = options
+			const frames = typewriterFrames(text, steps)
+			const message = await sock.sendMessage(jid, { text: frames[0]! }, sendOptions)
+			for (const frame of frames.slice(1)) {
+				await delay(Math.max(300, delayMs))
+				await sock.sendMessage(jid, { text: frame, edit: message!.key })
+			}
+
+			return message
+		},
+
+		/** send later: `when` is a Date or a delay in ms. Kept in memory only. */
+		schedule: scheduler.schedule,
+		cancelScheduled: scheduler.cancel,
+		listScheduled: scheduler.list,
+
+		/** experimental: content hidden behind a tap-to-reveal blur */
+		sendSpoiler: (jid: string, content: AnyMessageContent, options: MiscMessageGenerationOptions = {}) =>
+			sock.sendMessage(jid, { ...content, spoiler: true } as AnyMessageContent, options),
+
+		/** find the account behind a WhatsApp @username */
+		resolveUsername: async (username: string, pin?: string): Promise<UsernameResult | null> => {
+			const name = String(username ?? '')
+				.trim()
+				.replace(/^@/, '')
+				.toLowerCase()
+			if (!/^[a-z0-9._]{3,35}$/.test(name)) {
+				throw new Boom('that is not a valid WhatsApp username', { statusCode: 400 })
+			}
+
+			const cached = usernames.get(name)
+			if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value
+			const user = new USyncUser().withUsername(name)
+			if (pin) user.withUsernameKey(pin)
+			const result = await sock.executeUSyncQuery(new USyncQuery().withContactProtocol().withUser(user))
+			const entry = result?.list?.[0]
+			let value: UsernameResult | null = null
+			if (entry?.id) {
+				const lid = isLidUser(entry.id) ? entry.id : undefined
+				let pn = isPnUser(entry.id) ? jidNormalizedUser(entry.id) : undefined
+				if (lid && !pn) {
+					pn = (await lookup.getPNForLID(lid).catch(() => undefined)) || undefined
+					if (pn) pn = jidNormalizedUser(pn)
+				}
+
+				value = { username: name, jid: pn || entry.id, lid, pn, exists: !!entry.contact }
+			}
+
+			usernames.set(name, { at: Date.now(), value })
+			return value
+		},
+
+		/** the @username of each given account (null when it has none) */
+		fetchUsernames: async (...jids: string[]) => {
+			const query = new USyncQuery().withUsernameProtocol()
+			for (const jid of jids) query.withUser(new USyncUser().withId(jid))
+			const result = await sock.executeUSyncQuery(query)
+			return (result?.list || []).map(entry => ({
+				jid: entry.id,
+				username: typeof entry.username === 'string' ? entry.username : null
+			}))
+		},
+
+		/** one snapshot of the connection: state, uptime, last message, disconnect count */
+		health: (quietMs?: number) => ({ ...health.report(quietMs), scheduled: scheduler.list().length }),
+
 		/**
 		 * React to a message with one or more stickers / photos (the round
 		 * pictures WhatsApp shows around a message). Animated webp stays

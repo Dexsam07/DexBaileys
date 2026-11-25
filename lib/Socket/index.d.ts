@@ -1,5 +1,38 @@
 import type { UserFacingSocketConfig } from '../Types/index.js';
 declare const makeWASocket: (config: UserFacingSocketConfig) => {
+    sendSticker: (jid: string, sticker: Buffer, options?: import("../index.js").MiscMessageGenerationOptions & import("../index.js").StickerExifOptions & {
+        convert?: import("../index.js").StickerWebpOptions;
+    }) => Promise<import("../index.js").WAMessage | undefined>;
+    sendSelfDestruct: (jid: string, content: import("../index.js").AnyMessageContent, seconds: number, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<{
+        message: import("../index.js").WAMessage | undefined;
+        done: Promise<boolean>;
+        cancel: () => boolean;
+    }>;
+    sendTypewriter: (jid: string, text: string, options?: import("../index.js").MiscMessageGenerationOptions & {
+        steps?: number;
+        delayMs?: number;
+    }) => Promise<import("../index.js").WAMessage | undefined>;
+    schedule: (jid: string, content: import("../index.js").AnyMessageContent, when: Date | number, sendOptions?: import("../index.js").MiscMessageGenerationOptions) => import("../index.js").ScheduledMessage;
+    cancelScheduled: (id: string) => boolean;
+    listScheduled: () => import("../index.js").ScheduledMessage[];
+    sendSpoiler: (jid: string, content: import("../index.js").AnyMessageContent, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<import("../index.js").WAMessage | undefined>;
+    resolveUsername: (username: string, pin?: string) => Promise<import("./dex.js").UsernameResult | null>;
+    fetchUsernames: (...jids: string[]) => Promise<{
+        jid: string;
+        username: string | null;
+    }[]>;
+    health: (quietMs?: number) => {
+        scheduled: number;
+        state: "connecting" | "open" | "close";
+        connectedAt?: number;
+        uptimeMs: number;
+        lastMessageAt?: number;
+        messagesReceived: number;
+        disconnects: number;
+        lastDisconnectAt?: number;
+        lastDisconnectCode?: number;
+        healthy: boolean;
+    };
     sendStickerReaction: (key: import("../index.js").WAMessageKey, stickers: import("../index.js").WAMediaUpload | import("../index.js").WAMediaUpload[], options?: import("./dex.js").StickerReactionOptions) => Promise<string[]>;
     onReactionTap: (handler: (event: import("../index.js").ReactionTapEvent) => unknown, options?: import("../index.js").ReactionTapOptions) => {
         stop: () => void;

@@ -1,7 +1,8 @@
 import { Boom } from '@hapi/boom';
 import type { Transform } from 'stream';
 import type { AnyMediaMessageContent, AnyMessageContent, MiscMessageGenerationOptions, SocketConfig, WAMediaUpload, WAMessage, WAMessageKey } from '../Types/index.js';
-import { type AutoStatusOptions, type DeletedMessageEvent, type DeleteWatcherOptions, type GroupCache, type ReactionTapEvent, type ReactionTapOptions, type SendQueueOptions, type StickerWebpOptions, type TypingOptions, type ViewOnceMediaType } from '../Utils/index.js';
+import { type AutoStatusOptions, type DeletedMessageEvent, type DeleteWatcherOptions, type GroupCache, type ReactionTapEvent, type ReactionTapOptions, type SendQueueOptions, type StickerExifOptions, type StickerWebpOptions, type TypingOptions, type ViewOnceMediaType } from '../Utils/index.js';
+import { USyncQuery } from '../WAUSync/index.js';
 import { makeCommunitiesSocket } from './communities.js';
 export type StickerReactionOptions = {
     /** how many sticker reactions to add (1 to 30, default 1) */
@@ -14,12 +15,19 @@ export type StickerReactionOptions = {
     convert?: boolean | StickerWebpOptions;
 };
 export type StickerTapOptions = ReactionTapOptions & StickerReactionOptions;
+export type UsernameResult = {
+    username: string;
+    jid: string;
+    lid?: string;
+    pn?: string;
+    exists: boolean;
+};
 export type AlbumItem = Extract<AnyMediaMessageContent, {
     image: WAMediaUpload;
 } | {
     video: WAMediaUpload;
 }>;
-type DexBase = Pick<ReturnType<typeof makeCommunitiesSocket>, 'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus'>;
+type DexBase = Pick<ReturnType<typeof makeCommunitiesSocket>, 'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus' | 'executeUSyncQuery'>;
 /** the DexBaileys helper methods, bound to a socket */
 export type TagAllOptions = MiscMessageGenerationOptions & {
     /** only mention the admins */
@@ -28,6 +36,52 @@ export type TagAllOptions = MiscMessageGenerationOptions & {
     showList?: boolean;
 };
 export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logger"], sharedGroupCache?: GroupCache) => {
+    /**
+     * Send a sticker carrying your pack name and author. A photo, GIF or
+     * short video Buffer is converted to a sticker first.
+     */
+    sendSticker: (jid: string, sticker: Buffer, options?: MiscMessageGenerationOptions & StickerExifOptions & {
+        convert?: StickerWebpOptions;
+    }) => Promise<WAMessage | undefined>;
+    /** send a message that deletes itself for everyone after `seconds` */
+    sendSelfDestruct: (jid: string, content: AnyMessageContent, seconds: number, options?: MiscMessageGenerationOptions) => Promise<{
+        message: WAMessage | undefined;
+        /** resolves true once the message was deleted */
+        done: Promise<boolean>;
+        /** keep the message after all */
+        cancel: () => boolean;
+    }>;
+    /** the text appears piece by piece: one message that is edited until it is complete */
+    sendTypewriter: (jid: string, text: string, options?: MiscMessageGenerationOptions & {
+        steps?: number;
+        delayMs?: number;
+    }) => Promise<WAMessage | undefined>;
+    /** send later: `when` is a Date or a delay in ms. Kept in memory only. */
+    schedule: (jid: string, content: AnyMessageContent, when: Date | number, sendOptions?: MiscMessageGenerationOptions) => import("../index.js").ScheduledMessage;
+    cancelScheduled: (id: string) => boolean;
+    listScheduled: () => import("../index.js").ScheduledMessage[];
+    /** experimental: content hidden behind a tap-to-reveal blur */
+    sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    /** find the account behind a WhatsApp @username */
+    resolveUsername: (username: string, pin?: string) => Promise<UsernameResult | null>;
+    /** the @username of each given account (null when it has none) */
+    fetchUsernames: (...jids: string[]) => Promise<{
+        jid: string;
+        username: string | null;
+    }[]>;
+    /** one snapshot of the connection: state, uptime, last message, disconnect count */
+    health: (quietMs?: number) => {
+        scheduled: number;
+        state: "connecting" | "open" | "close";
+        connectedAt?: number;
+        uptimeMs: number;
+        lastMessageAt?: number;
+        messagesReceived: number;
+        disconnects: number;
+        lastDisconnectAt?: number;
+        lastDisconnectCode?: number;
+        healthy: boolean;
+    };
     /**
      * React to a message with one or more stickers / photos (the round
      * pictures WhatsApp shows around a message). Animated webp stays
@@ -162,6 +216,52 @@ export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logge
 };
 /** DexBaileys helpers on top of the regular socket */
 export declare const makeDexSocket: (config: SocketConfig) => {
+    /**
+     * Send a sticker carrying your pack name and author. A photo, GIF or
+     * short video Buffer is converted to a sticker first.
+     */
+    sendSticker: (jid: string, sticker: Buffer, options?: MiscMessageGenerationOptions & StickerExifOptions & {
+        convert?: StickerWebpOptions;
+    }) => Promise<WAMessage | undefined>;
+    /** send a message that deletes itself for everyone after `seconds` */
+    sendSelfDestruct: (jid: string, content: AnyMessageContent, seconds: number, options?: MiscMessageGenerationOptions) => Promise<{
+        message: WAMessage | undefined;
+        /** resolves true once the message was deleted */
+        done: Promise<boolean>;
+        /** keep the message after all */
+        cancel: () => boolean;
+    }>;
+    /** the text appears piece by piece: one message that is edited until it is complete */
+    sendTypewriter: (jid: string, text: string, options?: MiscMessageGenerationOptions & {
+        steps?: number;
+        delayMs?: number;
+    }) => Promise<WAMessage | undefined>;
+    /** send later: `when` is a Date or a delay in ms. Kept in memory only. */
+    schedule: (jid: string, content: AnyMessageContent, when: Date | number, sendOptions?: MiscMessageGenerationOptions) => import("../index.js").ScheduledMessage;
+    cancelScheduled: (id: string) => boolean;
+    listScheduled: () => import("../index.js").ScheduledMessage[];
+    /** experimental: content hidden behind a tap-to-reveal blur */
+    sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    /** find the account behind a WhatsApp @username */
+    resolveUsername: (username: string, pin?: string) => Promise<UsernameResult | null>;
+    /** the @username of each given account (null when it has none) */
+    fetchUsernames: (...jids: string[]) => Promise<{
+        jid: string;
+        username: string | null;
+    }[]>;
+    /** one snapshot of the connection: state, uptime, last message, disconnect count */
+    health: (quietMs?: number) => {
+        scheduled: number;
+        state: "connecting" | "open" | "close";
+        connectedAt?: number;
+        uptimeMs: number;
+        lastMessageAt?: number;
+        messagesReceived: number;
+        disconnects: number;
+        lastDisconnectAt?: number;
+        lastDisconnectCode?: number;
+        healthy: boolean;
+    };
     /**
      * React to a message with one or more stickers / photos (the round
      * pictures WhatsApp shows around a message). Animated webp stays
@@ -551,7 +651,7 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     wamBuffer: import("../index.js").BinaryInfo;
     waitForConnectionUpdate: (check: (u: Partial<import("../index.js").ConnectionState>) => Promise<boolean | undefined>, timeoutMs?: number) => Promise<void>;
     sendWAMBuffer: (wamBuffer: Buffer) => Promise<any>;
-    executeUSyncQuery: (usyncQuery: import("../index.js").USyncQuery) => Promise<import("../index.js").USyncQueryResult | undefined>;
+    executeUSyncQuery: (usyncQuery: USyncQuery) => Promise<import("../index.js").USyncQueryResult | undefined>;
     onWhatsApp: (...phoneNumber: string[]) => Promise<{
         jid: string;
         exists: boolean;

@@ -51,7 +51,8 @@ import {
 	toNumber,
 	unixTimestampSeconds,
 	xmppPreKey,
-	xmppSignedPreKey
+	xmppSignedPreKey,
+	parseNewsletterStatus
 } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
 import { makeOfflineNodeProcessor, type MessageType } from '../Utils/offline-node-processor'
@@ -1958,6 +1959,10 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				)
 				await handleMessage(node)
 				return
+			}
+
+			if (isJidNewsletter(node.attrs.from)) {
+				ev.emit('newsletter.status', parseNewsletterStatus(node))
 			}
 
 			await sendMessageAck(node)

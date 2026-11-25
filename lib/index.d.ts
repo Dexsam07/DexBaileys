@@ -8,7 +8,7 @@ export * from './WAM/index.js';
 export * from './WAUSync/index.js';
 export * from './Store/make-in-memory-store.js';
 export { makeDexHelpers } from './Socket/dex.js';
-export type { AlbumItem, StickerReactionOptions, StickerTapOptions, TagAllOptions } from './Socket/dex.js';
+export type { AlbumItem, StickerReactionOptions, StickerTapOptions, TagAllOptions, UsernameResult } from './Socket/dex.js';
 export type WASocket = ReturnType<typeof makeWASocket>;
 export { makeWASocket };
 export default makeWASocket;

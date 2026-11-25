@@ -6,6 +6,7 @@ export * from './interactive.js';
 export * from './reconnect-manager.js';
 export * from './dex-extras.js';
 export * from './dex-bot.js';
+export * from './dex-plus.js';
 export * from './messages-media.js';
 export * from './validate-connection.js';
 export * from './crypto.js';

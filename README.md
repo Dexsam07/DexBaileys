@@ -1,12 +1,12 @@
 <div align="center">
 
-# DexBaileys — v1.4.0
+# DexBaileys — v1.5.0
 
 **Fast, clean WhatsApp Web library for Node.js — buttons, photo reactions, channels, status and LID helpers built in.**
 
 Maintained by **Shyam Chaudhari** · **DEX SHYAM TECH**
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/Dexsam07/DexBaileys)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/Dexsam07/DexBaileys)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Channel](https://img.shields.io/badge/WhatsApp-DEX%20SHYAM%20TECH-25D366)](https://whatsapp.com/channel/0029VbBgXTsKwqSKZKy38w2o)
@@ -346,7 +346,88 @@ const auto = sock.autoStatus({
 
 ---
 
-### 18. More built in
+### 18. Stickers with your pack name
+**File:** `src/Utils/dex-plus.ts`
+
+```js
+// photo, GIF, short video or webp: converted if needed, then tagged
+await sock.sendSticker(jid, buffer, { pack: 'DEX SHYAM TECH', author: 'Shyam' })
+
+// or tag a webp yourself
+const tagged = addStickerExif(webp, { pack: 'My Pack', author: 'Me', emojis: ['🔥'] })
+```
+
+---
+
+### 19. Self-destruct, typewriter and scheduled messages
+**File:** `src/Socket/dex.ts`
+
+```js
+// deleted for everyone after 30 seconds
+const timer = await sock.sendSelfDestruct(jid, { text: 'OTP: 4821' }, 30)
+// timer.cancel() keeps it
+
+// one message that is edited until the full text stands
+await sock.sendTypewriter(jid, 'Loading DEX menu, please wait', { steps: 5, delayMs: 700 })
+
+// send later: a Date, or a delay in ms
+const job = sock.schedule(jid, { text: 'Good morning' }, new Date('2026-12-01T07:00:00+05:30'))
+sock.listScheduled()
+sock.cancelScheduled(job.id)
+```
+
+Scheduled and self-destruct timers live in memory; they are lost if the process restarts.
+
+---
+
+### 20. Quiz polls, hidden voters, spoilers
+**File:** `src/Utils/messages.ts`
+
+```js
+await sock.sendMessage(jid, { poll: { name: 'Capital of India?', values: ['Delhi', 'Mumbai'], correctAnswer: 'Delhi' } })
+await sock.sendMessage(jid, { poll: { name: 'Vote', values: ['A', 'B'], hideVoter: true, canAddOption: true } })
+await sock.sendSpoiler(jid, { text: 'tap to read' })
+```
+
+These are newer WhatsApp message types. Older WhatsApp apps may not show them.
+
+---
+
+### 21. Usernames
+**File:** `src/Socket/dex.ts`
+
+```js
+const user = await sock.resolveUsername('@someone') // { username, jid, lid, pn, exists } or null
+const names = await sock.fetchUsernames(jid1, jid2) // [{ jid, username }]
+```
+
+---
+
+### 22. Channel status event
+**File:** `src/Utils/dex-plus.ts`
+
+```js
+sock.ev.on('newsletter.status', status => {
+	console.log(status.id, status.message, status.viewsCount, status.reactions)
+})
+```
+
+---
+
+### 23. Move a session, check health
+**File:** `src/Utils/dex-plus.ts`
+
+```js
+// folder -> one file (or a SESSION_ID string -> folder / file), no pairing again
+await migrateSession({ folder: 'auth_info' }, { file: 'session.json' })
+
+sock.health() // { state, uptimeMs, lastMessageAt, messagesReceived, disconnects, lastDisconnectCode, healthy }
+sock.health(10 * 60 * 1000) // healthy only if something arrived in the last 10 minutes
+```
+
+---
+
+### 24. More built in
 
 - Encrypted message edits are decrypted and emitted as `messages.update`
 - `makeInMemoryStore` is included (bounded history, JSON snapshot)
@@ -441,7 +522,7 @@ Use responsibly and in accordance with WhatsApp's Terms of Service. Button, caro
 
 <div align="center">
 
-**DexBaileys v1.4.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
+**DexBaileys v1.5.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
 
 MIT licence · see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
 

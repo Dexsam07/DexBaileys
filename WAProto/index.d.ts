@@ -3182,6 +3182,7 @@ export namespace proto {
         nonJidMentions?: (number|null);
         quotedType?: (proto.ContextInfo.QuotedType|null);
         botMessageSharingInfo?: (proto.IBotMessageSharingInfo|null);
+        isSpoiler?: (boolean|null);
     }
 
     class ContextInfo implements IContextInfo {
@@ -3241,6 +3242,7 @@ export namespace proto {
         public nonJidMentions?: (number|null);
         public quotedType?: (proto.ContextInfo.QuotedType|null);
         public botMessageSharingInfo?: (proto.IBotMessageSharingInfo|null);
+        public isSpoiler?: (boolean|null);
         public static create(properties?: proto.IContextInfo): proto.ContextInfo;
         public static encode(m: proto.IContextInfo, w?: $protobuf.Writer): $protobuf.Writer;
         public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.ContextInfo;
@@ -5278,6 +5280,8 @@ export namespace proto {
         pollCreationMessageV5?: (proto.Message.IPollCreationMessage|null);
         newsletterFollowerInviteMessageV2?: (proto.Message.INewsletterFollowerInviteMessage|null);
         pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
+        spoilerMessage?: (proto.Message.IFutureProofMessage|null);
+        pollCreationMessageV6?: (proto.Message.IPollCreationMessage|null);
     }
 
     class Message implements IMessage {
@@ -5377,6 +5381,8 @@ export namespace proto {
         public pollCreationMessageV5?: (proto.Message.IPollCreationMessage|null);
         public newsletterFollowerInviteMessageV2?: (proto.Message.INewsletterFollowerInviteMessage|null);
         public pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
+        public spoilerMessage?: (proto.Message.IFutureProofMessage|null);
+        public pollCreationMessageV6?: (proto.Message.IPollCreationMessage|null);
         public static create(properties?: proto.IMessage): proto.Message;
         public static encode(m: proto.IMessage, w?: $protobuf.Writer): $protobuf.Writer;
         public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.Message;
@@ -8306,6 +8312,9 @@ export namespace proto {
             pollContentType?: (proto.Message.PollContentType|null);
             pollType?: (proto.Message.PollType|null);
             correctAnswer?: (proto.Message.PollCreationMessage.IOption|null);
+            endTime?: (number|Long|null);
+            hideParticipantName?: (boolean|null);
+            allowAddOption?: (boolean|null);
         }
 
         class PollCreationMessage implements IPollCreationMessage {
@@ -8318,6 +8327,9 @@ export namespace proto {
             public pollContentType?: (proto.Message.PollContentType|null);
             public pollType?: (proto.Message.PollType|null);
             public correctAnswer?: (proto.Message.PollCreationMessage.IOption|null);
+            public endTime?: (number|Long|null);
+            public hideParticipantName?: (boolean|null);
+            public allowAddOption?: (boolean|null);
             public static create(properties?: proto.Message.IPollCreationMessage): proto.Message.PollCreationMessage;
             public static encode(m: proto.Message.IPollCreationMessage, w?: $protobuf.Writer): $protobuf.Writer;
             public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.Message.PollCreationMessage;

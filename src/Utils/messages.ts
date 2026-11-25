@@ -572,15 +572,39 @@ export const generateWAMessageContent = async (
 			messageSecret: message.poll.messageSecret || randomBytes(32)
 		}
 
-		const pollCreationMessage = {
-			name: message.poll.name,
-			selectableOptionsCount: message.poll.selectableCount,
-			options: message.poll.values.map(optionName => ({ optionName }))
+		const { endDate, hideVoter, canAddOption } = message.poll
+		if (endDate !== undefined && (!(endDate instanceof Date) || !Number.isFinite(endDate.getTime()))) {
+			throw new Boom('poll.endDate must be a valid Date', { statusCode: 400 })
 		}
 
-		if (message.poll.toAnnouncementGroup) {
+		const pollCreationMessage: proto.Message.IPollCreationMessage = {
+			name: message.poll.name,
+			selectableOptionsCount: message.poll.selectableCount,
+			options: message.poll.values.map(optionName => ({ optionName })),
+			...(endDate ? { endTime: endDate.getTime() } : {}),
+			...(hideVoter ? { hideParticipantName: true } : {}),
+			...(canAddOption ? { allowAddOption: true } : {})
+		}
+
+		if (message.poll.correctAnswer !== undefined && message.poll.correctAnswer !== null) {
+			const answer = String(message.poll.correctAnswer)
+			if (!message.poll.values.includes(answer)) {
+				throw new Boom('poll.correctAnswer must be one of poll.values', { statusCode: 400 })
+			}
+
+			// quiz polls: single choice with a marked right answer
+			m.pollCreationMessageV5 = {
+				...pollCreationMessage,
+				selectableOptionsCount: 1,
+				pollType: proto.Message.PollType.QUIZ,
+				correctAnswer: { optionName: answer }
+			}
+		} else if (message.poll.toAnnouncementGroup) {
 			// poll v2 is for community announcement groups (single select and multiple)
 			m.pollCreationMessageV2 = pollCreationMessage
+		} else if (hideVoter || canAddOption) {
+			// only poll v6 carries the hidden-voter and add-option flags
+			m.pollCreationMessageV6 = pollCreationMessage
 		} else {
 			if (message.poll.selectableCount === 1) {
 				//poll v3 is for single select polls
@@ -617,6 +641,20 @@ export const generateWAMessageContent = async (
 
 	if (hasOptionalProperty(message, 'viewOnce') && !!message.viewOnce) {
 		m = { viewOnceMessage: { message: m } }
+	}
+
+	if (hasOptionalProperty(message, 'spoiler') && !!message.spoiler) {
+		const innerType = Object.keys(m)[0] as keyof proto.IMessage | undefined
+		if (innerType === 'conversation') {
+			m = { extendedTextMessage: { text: m.conversation } }
+		}
+
+		const inner = m[Object.keys(m)[0] as keyof proto.IMessage] as { contextInfo?: proto.IContextInfo } | undefined
+		if (inner && typeof inner === 'object') {
+			inner.contextInfo = { ...(inner.contextInfo || {}), isSpoiler: true }
+		}
+
+		m = { spoilerMessage: { message: m } }
 	}
 
 	if (
@@ -816,7 +854,8 @@ export const normalizeMessageContent = (content: WAMessageContent | null | undef
 			message?.editedMessage ||
 			message?.associatedChildMessage ||
 			message?.groupStatusMessage ||
-			message?.groupStatusMessageV2
+			message?.groupStatusMessageV2 ||
+			message?.spoilerMessage
 		)
 	}
 }
@@ -945,6 +984,8 @@ export function getAggregateVotesInPollMessage(
 		message?.pollCreationMessage?.options ||
 		message?.pollCreationMessageV2?.options ||
 		message?.pollCreationMessageV3?.options ||
+		message?.pollCreationMessageV5?.options ||
+		message?.pollCreationMessageV6?.options ||
 		[]
 	const voteHashMap = opts.reduce(
 		(acc, opt) => {
