@@ -1,12 +1,12 @@
 <div align="center">
 
-# DexBaileys — v1.6.0
+# DexBaileys — v1.7.0
 
 **Fast, clean WhatsApp Web library for Node.js — buttons, photo reactions, channels, status and LID helpers built in.**
 
 Maintained by **Shyam Chaudhari** · **DEX SHYAM TECH**
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue)](https://github.com/Dexsam07/DexBaileys)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue)](https://github.com/Dexsam07/DexBaileys)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Channel](https://img.shields.io/badge/WhatsApp-DEX%20SHYAM%20TECH-25D366)](https://whatsapp.com/channel/0029VbBgXTsKwqSKZKy38w2o)
@@ -481,7 +481,56 @@ DexBaileys never re-compresses your file, with or without `hd`. What `hd: true` 
 
 ---
 
-### 27. More built in
+### 27. Sticker pack in one message
+**File:** `src/Utils/dex-pack.ts`, `src/Socket/dex.ts`
+
+Send a whole pack (up to 60 stickers); the receiver adds it with one tap. Photos, GIFs and short videos are converted to stickers for you.
+
+```js
+await sock.sendStickerPack(jid, {
+  name: 'DEX Pack',
+  publisher: 'Shyam Chaudhari',
+  description: 'optional',
+  stickers: [webp1, webp2, { data: photoBuffer, emojis: ['🔥'] }],
+  trayIcon: pngBuffer // optional: made from the first sticker when left out (needs sharp)
+})
+```
+
+---
+
+### 28. Group status
+**File:** `src/Utils/dex-pack.ts`, `src/Socket/dex.ts`
+
+Post a status inside a group: text, photo, video, voice note or sticker.
+
+```js
+await sock.sendGroupStatus(groupJid, { image: buffer, caption: 'Hello group' })
+await sock.sendGroupStatus(groupJid, { text: 'Good morning' }, { backgroundColor: '#B00020' })
+```
+
+> Group status is a new WhatsApp feature. Members on an older app may not see it.
+
+---
+
+### 29. SQLite session
+**File:** `src/Utils/dex-pack.ts`
+
+The whole login in one `auth.db` file, using the SQLite built into Node (22.5 or newer). No extra package.
+
+```js
+import { useSqliteAuthState } from 'dexbaileys'
+
+const { state, saveCreds, clear, close } = await useSqliteAuthState('./session/auth.db', {
+  migrateFromFolder: 'auth_info',        // optional: copy an old session folder in once
+  sessionId: process.env.SESSION_ID      // optional
+})
+const sock = makeWASocket({ auth: state })
+sock.ev.on('creds.update', saveCreds)
+```
+
+---
+
+### 30. More built in
 
 - Encrypted message edits are decrypted and emitted as `messages.update`
 - `makeInMemoryStore` is included (bounded history, JSON snapshot)
@@ -576,7 +625,7 @@ Use responsibly and in accordance with WhatsApp's Terms of Service. Button, caro
 
 <div align="center">
 
-**DexBaileys v1.6.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
+**DexBaileys v1.7.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
 
 MIT licence · see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
 

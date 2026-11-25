@@ -72,9 +72,11 @@ type EncryptedStreamOptions = {
     saveOriginalFileIfRequired?: boolean;
     logger?: ILogger;
     opts?: RequestInit;
+    /** encrypt with this key instead of a fresh one (a sticker pack and its icon share one) */
+    mediaKey?: Uint8Array;
 };
-export declare const encryptedStream: (media: WAMediaUpload, mediaType: MediaType, { logger, saveOriginalFileIfRequired, opts }?: EncryptedStreamOptions) => Promise<{
-    mediaKey: NonSharedBuffer;
+export declare const encryptedStream: (media: WAMediaUpload, mediaType: MediaType, { logger, saveOriginalFileIfRequired, opts, mediaKey: givenMediaKey }?: EncryptedStreamOptions) => Promise<{
+    mediaKey: Buffer<ArrayBuffer>;
     originalFilePath: string | undefined;
     encFilePath: string;
     mac: Buffer<ArrayBuffer>;

@@ -10,7 +10,7 @@ export * from './WAUSync/index'
 export * from './Store/make-in-memory-store'
 
 export { makeDexHelpers } from './Socket/dex'
-export type { AlbumItem, StickerReactionOptions, StickerTapOptions, TagAllOptions, UsernameResult } from './Socket/dex'
+export type { AlbumItem, StickerReactionOptions, StickerPackOptions, StickerTapOptions, TagAllOptions, UsernameResult } from './Socket/dex'
 export type WASocket = ReturnType<typeof makeWASocket>
 export { makeWASocket }
 export default makeWASocket

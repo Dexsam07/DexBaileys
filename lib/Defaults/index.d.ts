@@ -52,6 +52,8 @@ export declare const MEDIA_HKDF_KEY_MAPPING: {
     'thumbnail-image': string;
     'thumbnail-video': string;
     'thumbnail-link': string;
+    'sticker-pack': string;
+    'thumbnail-sticker-pack': string;
     'md-msg-hist': string;
     'md-app-state': string;
     'product-catalog-image': string;

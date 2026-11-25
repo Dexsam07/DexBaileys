@@ -16,6 +16,15 @@ declare const makeWASocket: (config: UserFacingSocketConfig) => {
     cancelScheduled: (id: string) => boolean;
     listScheduled: () => import("../index.js").ScheduledMessage[];
     sendHD: (jid: string, content: import("../index.js").AnyMediaMessageContent, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<import("../index.js").WAMessage | undefined>;
+    sendStickerPack: (jid: string, pack: import("./dex.js").StickerPackOptions) => Promise<{
+        message: import("../index.js").WAMessage;
+        stickerPackId: string;
+        stickers: number;
+    }>;
+    sendGroupStatus: (jid: string, content: import("../index.js").AnyMessageContent, options?: {
+        backgroundColor?: string;
+        font?: number;
+    }) => Promise<import("../index.js").WAMessage>;
     sendSpoiler: (jid: string, content: import("../index.js").AnyMessageContent, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<import("../index.js").WAMessage | undefined>;
     resolveUsername: (username: string, pin?: string) => Promise<import("./dex.js").UsernameResult | null>;
     fetchUsernames: (...jids: string[]) => Promise<{

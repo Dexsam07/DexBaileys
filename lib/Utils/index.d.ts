@@ -26,4 +26,5 @@ export * from './companion-reg-client-utils.js';
 export * from './identity-change-handler.js';
 export * from './stanza-ack.js';
 export * from './dex-store.js';
+export * from './dex-pack.js';
 //# sourceMappingURL=index.d.ts.map

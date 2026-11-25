@@ -108,7 +108,9 @@ export const MEDIA_PATH_MAP: { [T in MediaType]?: string } = {
 	'product-catalog-image': '/product/image',
 	'md-app-state': '',
 	'md-msg-hist': '/mms/md-app-state',
-	'biz-cover-photo': '/pps/biz-cover-photo'
+	'biz-cover-photo': '/pps/biz-cover-photo',
+	'sticker-pack': '/mms/sticker-pack',
+	'thumbnail-sticker-pack': '/mms/sticker-pack'
 }
 
 export const MEDIA_HKDF_KEY_MAPPING = {
@@ -125,6 +127,8 @@ export const MEDIA_HKDF_KEY_MAPPING = {
 	'thumbnail-image': 'Image Thumbnail',
 	'thumbnail-video': 'Video Thumbnail',
 	'thumbnail-link': 'Link Thumbnail',
+	'sticker-pack': 'Sticker Pack',
+	'thumbnail-sticker-pack': 'Sticker Pack Thumbnail',
 	'md-msg-hist': 'History',
 	'md-app-state': 'App State',
 	'product-catalog-image': '',

@@ -1,7 +1,7 @@
 import { Boom } from '@hapi/boom';
 import type { Transform } from 'stream';
 import type { AnyMediaMessageContent, AnyMessageContent, MiscMessageGenerationOptions, SocketConfig, WAMediaUpload, WAMessage, WAMessageKey } from '../Types/index.js';
-import { type AutoStatusOptions, type DeletedMessageEvent, type DeleteWatcherOptions, type GroupCache, type ReactionTapEvent, type ReactionTapOptions, type SendQueueOptions, type StickerExifOptions, type StickerWebpOptions, type TypingOptions, type ViewOnceMediaType } from '../Utils/index.js';
+import { type AutoStatusOptions, type DeletedMessageEvent, type DeleteWatcherOptions, type StickerPackInfo, type StickerPackItem, type GroupCache, type ReactionTapEvent, type ReactionTapOptions, type SendQueueOptions, type StickerExifOptions, type StickerWebpOptions, type TypingOptions, type ViewOnceMediaType } from '../Utils/index.js';
 import { USyncQuery } from '../WAUSync/index.js';
 import { makeCommunitiesSocket } from './communities.js';
 export type StickerReactionOptions = {
@@ -27,6 +27,13 @@ export type AlbumItem = Extract<AnyMediaMessageContent, {
 } | {
     video: WAMediaUpload;
 }>;
+export type StickerPackOptions = StickerPackInfo & {
+    /** webp stickers; photos, GIFs and short videos are converted */
+    stickers: (Buffer | StickerPackItem)[];
+    /** png shown as the pack icon; made from the first sticker when left out */
+    trayIcon?: Buffer;
+    convert?: StickerWebpOptions;
+};
 type DexBase = Pick<ReturnType<typeof makeCommunitiesSocket>, 'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus' | 'executeUSyncQuery'>;
 /** the DexBaileys helper methods, bound to a socket */
 export type TagAllOptions = MiscMessageGenerationOptions & {
@@ -62,6 +69,17 @@ export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logge
     listScheduled: () => import("../index.js").ScheduledMessage[];
     /** photo or video with a larger, sharper preview; the file itself is sent as it is */
     sendHD: (jid: string, content: AnyMediaMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    /** a whole sticker pack in one message; the receiver adds it with one tap */
+    sendStickerPack: (jid: string, pack: StickerPackOptions) => Promise<{
+        message: WAMessage;
+        stickerPackId: string;
+        stickers: number;
+    }>;
+    /** post a status inside a group (text, photo, video, voice or sticker) */
+    sendGroupStatus: (jid: string, content: AnyMessageContent, options?: {
+        backgroundColor?: string;
+        font?: number;
+    }) => Promise<WAMessage>;
     /** experimental: content hidden behind a tap-to-reveal blur */
     sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** find the account behind a WhatsApp @username */
@@ -244,6 +262,17 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     listScheduled: () => import("../index.js").ScheduledMessage[];
     /** photo or video with a larger, sharper preview; the file itself is sent as it is */
     sendHD: (jid: string, content: AnyMediaMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    /** a whole sticker pack in one message; the receiver adds it with one tap */
+    sendStickerPack: (jid: string, pack: StickerPackOptions) => Promise<{
+        message: WAMessage;
+        stickerPackId: string;
+        stickers: number;
+    }>;
+    /** post a status inside a group (text, photo, video, voice or sticker) */
+    sendGroupStatus: (jid: string, content: AnyMessageContent, options?: {
+        backgroundColor?: string;
+        font?: number;
+    }) => Promise<WAMessage>;
     /** experimental: content hidden behind a tap-to-reveal blur */
     sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** find the account behind a WhatsApp @username */

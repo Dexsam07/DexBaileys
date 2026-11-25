@@ -1,4 +1,5 @@
 import { Boom } from '@hapi/boom'
+import { promises as fs } from 'fs'
 import type { Transform } from 'stream'
 import { DEFAULT_CONNECTION_CONFIG } from '../Defaults'
 import type {
@@ -27,8 +28,17 @@ import {
 	type DeleteWatcherOptions,
 	downloadMediaMessage,
 	extractViewOnceContent,
+	buildGroupStatusMessage,
+	buildStickerPackMessage,
+	createStoredZip,
+	encryptedStream,
 	findGroupParticipant,
+	generateWAMessageContent,
+	generateWAMessageFromContent,
+	planStickerPack,
 	quietSignalLogs,
+	type StickerPackInfo,
+	type StickerPackItem,
 	generateMessageIDV2,
 	type GroupCache,
 	groupAdminsOf,
@@ -70,6 +80,14 @@ export type StickerTapOptions = ReactionTapOptions & StickerReactionOptions
 export type UsernameResult = { username: string; jid: string; lid?: string; pn?: string; exists: boolean }
 
 export type AlbumItem = Extract<AnyMediaMessageContent, { image: WAMediaUpload } | { video: WAMediaUpload }>
+
+export type StickerPackOptions = StickerPackInfo & {
+	/** webp stickers; photos, GIFs and short videos are converted */
+	stickers: (Buffer | StickerPackItem)[]
+	/** png shown as the pack icon; made from the first sticker when left out */
+	trayIcon?: Buffer
+	convert?: StickerWebpOptions
+}
 
 type DexBase = Pick<
 	ReturnType<typeof makeCommunitiesSocket>,
@@ -255,6 +273,116 @@ export const makeDexHelpers = (sock: DexBase, logger: SocketConfig['logger'], sh
 			}
 
 			return sock.sendMessage(jid, { ...content, hd: true } as AnyMessageContent, options)
+		},
+
+		/** a whole sticker pack in one message; the receiver adds it with one tap */
+		sendStickerPack: async (jid: string, pack: StickerPackOptions) => {
+			// check the name and the count first, so a bad pack costs no conversion or upload
+			planStickerPack(
+				pack,
+				(pack?.stickers || []).map(() => ({ data: Buffer.from([0]) }))
+			)
+			const items: StickerPackItem[] = []
+			for (const entry of pack?.stickers || []) {
+				const item = Buffer.isBuffer(entry) ? { data: entry } : { ...entry }
+				if (Buffer.isBuffer(item.data) && !isWebp(item.data)) {
+					const made = await makeStickerWebp(item.data, pack.convert)
+					item.data = made.data
+					item.isAnimated = made.isAnimated
+				} else if (Buffer.isBuffer(item.data) && item.isAnimated === undefined) {
+					item.isAnimated = isAnimatedWebp(item.data)
+				}
+
+				items.push(item)
+			}
+
+			const { stickerPackId, files } = planStickerPack(pack, items)
+			let trayIcon = pack.trayIcon
+			if (!trayIcon) {
+				const sharp = await import('sharp').then(
+					m => m.default,
+					() => undefined
+				)
+				if (!sharp) {
+					throw new Boom('give a trayIcon (png), or install sharp so one can be made from the first sticker', {
+						statusCode: 501
+					})
+				}
+
+				trayIcon = await sharp(files[0]!.data)
+					.resize(252, 252, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+					.png()
+					.toBuffer()
+			}
+
+			const trayIconFileName = 'tray.png'
+			const zip = createStoredZip([
+				...files.map(f => ({ name: f.fileName, data: f.data })),
+				{ name: trayIconFileName, data: trayIcon }
+			])
+
+			const uploadPart = async (
+				data: Buffer,
+				mediaType: 'sticker-pack' | 'thumbnail-sticker-pack',
+				mediaKey?: Uint8Array
+			) => {
+				const enc = await encryptedStream(data, mediaType, { logger, mediaKey })
+				try {
+					const { directPath } = await sock.waUploadToServer(enc.encFilePath, {
+						fileEncSha256B64: enc.fileEncSha256.toString('base64'),
+						mediaType
+					})
+					return {
+						mediaKey: enc.mediaKey,
+						fileSha256: enc.fileSha256,
+						fileEncSha256: enc.fileEncSha256,
+						fileLength: enc.fileLength,
+						directPath
+					}
+				} finally {
+					await fs.unlink(enc.encFilePath).catch(() => {})
+				}
+			}
+
+			const packUpload = await uploadPart(zip, 'sticker-pack')
+			const iconUpload = await uploadPart(trayIcon, 'thumbnail-sticker-pack', packUpload.mediaKey)
+			const message = generateWAMessageFromContent(
+				jid,
+				buildStickerPackMessage(
+					{ ...pack, stickerPackId, trayIconFileName, zipLength: zip.length },
+					files,
+					packUpload,
+					iconUpload
+				),
+				{ userJid: sock.user?.id } as any
+			)
+			await sock.relayMessage(jid, message.message!, { messageId: message.key.id! })
+			return { message, stickerPackId, stickers: files.length }
+		},
+
+		/** post a status inside a group (text, photo, video, voice or sticker) */
+		sendGroupStatus: async (
+			jid: string,
+			content: AnyMessageContent,
+			options: { backgroundColor?: string; font?: number } = {}
+		) => {
+			if (!jid?.endsWith('@g.us')) {
+				throw new Boom('a group status can only go to a group', { statusCode: 400 })
+			}
+
+			const inner = await generateWAMessageContent(content, {
+				...options,
+				upload: sock.waUploadToServer,
+				logger
+			} as any)
+			const me = sock.user?.lid || sock.user?.id
+			const message = generateWAMessageFromContent(
+				jid,
+				buildGroupStatusMessage(inner, me ? jidNormalizedUser(me) : undefined),
+				{ userJid: sock.user?.id } as any
+			)
+			await sock.relayMessage(jid, message.message!, { messageId: message.key.id! })
+			return message
 		},
 
 		/** experimental: content hidden behind a tap-to-reveal blur */
