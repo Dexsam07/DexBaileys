@@ -1,7 +1,7 @@
 {
   "name": "dexbaileys",
   "type": "module",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "description": "DexBaileys - WhatsApp Web WebSocket library by DEX SHYAM TECH (Shyam Chaudhari) with buttons, lists, carousel, photo reactions, status, channel and LID helpers.",
   "keywords": [
     "whatsapp",

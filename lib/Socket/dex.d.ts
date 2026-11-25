@@ -1,27 +1,52 @@
 import { Boom } from '@hapi/boom';
 import type { Transform } from 'stream';
-import type { AnyMediaMessageContent, MiscMessageGenerationOptions, SocketConfig, WAMediaUpload, WAMessage, WAMessageKey } from '../Types/index.js';
-import { type SendQueueOptions, type ViewOnceMediaType } from '../Utils/index.js';
+import type { AnyMediaMessageContent, AnyMessageContent, MiscMessageGenerationOptions, SocketConfig, WAMediaUpload, WAMessage, WAMessageKey } from '../Types/index.js';
+import { type AutoStatusOptions, type DeletedMessageEvent, type DeleteWatcherOptions, type GroupCache, type ReactionTapEvent, type ReactionTapOptions, type SendQueueOptions, type StickerWebpOptions, type TypingOptions, type ViewOnceMediaType } from '../Utils/index.js';
 import { makeCommunitiesSocket } from './communities.js';
 export type StickerReactionOptions = {
     /** how many sticker reactions to add (1 to 30, default 1) */
     count?: number;
     /** wait between two reactions in ms (default 0) */
     delayMs?: number;
+    /** force the animated flag; by default it is read from the webp itself */
+    animated?: boolean;
+    /** photos, GIFs and short videos given as a Buffer are turned into a sticker first (default true) */
+    convert?: boolean | StickerWebpOptions;
 };
+export type StickerTapOptions = ReactionTapOptions & StickerReactionOptions;
 export type AlbumItem = Extract<AnyMediaMessageContent, {
     image: WAMediaUpload;
 } | {
     video: WAMediaUpload;
 }>;
-type DexBase = Pick<ReturnType<typeof makeCommunitiesSocket>, 'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user'>;
+type DexBase = Pick<ReturnType<typeof makeCommunitiesSocket>, 'sendMessage' | 'relayMessage' | 'waUploadToServer' | 'updateMediaMessage' | 'signalRepository' | 'user' | 'ev' | 'sendPresenceUpdate' | 'groupMetadata' | 'readStatus' | 'reactToStatus'>;
 /** the DexBaileys helper methods, bound to a socket */
-export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logger"]) => {
+export type TagAllOptions = MiscMessageGenerationOptions & {
+    /** only mention the admins */
+    adminsOnly?: boolean;
+    /** write the @numbers under the text (default false = hidden tag) */
+    showList?: boolean;
+};
+export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logger"], sharedGroupCache?: GroupCache) => {
     /**
      * React to a message with one or more stickers / photos (the round
-     * pictures WhatsApp shows around a message). `stickers` must be webp.
+     * pictures WhatsApp shows around a message). Animated webp stays
+     * animated; a photo, GIF or short video Buffer is converted first.
      */
-    sendStickerReaction: (key: WAMessageKey, stickers: WAMediaUpload | WAMediaUpload[], { count, delayMs }?: StickerReactionOptions) => Promise<string[]>;
+    sendStickerReaction: (key: WAMessageKey, stickers: WAMediaUpload | WAMediaUpload[], options?: StickerReactionOptions) => Promise<string[]>;
+    /** call `handler` when an emoji is put on a message (default: only by the linked account) */
+    onReactionTap: (handler: (event: ReactionTapEvent) => unknown, options?: ReactionTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
+    /**
+     * Emoji shortcut: when the linked account (or whoever `allow` accepts)
+     * puts an emoji on a message, that message gets the sticker reactions.
+     */
+    stickerReactOnTap: (stickers: WAMediaUpload | WAMediaUpload[], options?: StickerTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     /** same person? works across phone number, bare digits and LID */
     isSameUser: (a: string | undefined | null, b: string | undefined | null) => Promise<boolean>;
     /** phone-number JID and LID of a user, as far as they are known locally */
@@ -46,9 +71,90 @@ export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logge
         caption: string | undefined;
         data: T extends "stream" ? Transform : Buffer;
     }>;
+    /** group metadata cache, kept fresh from the socket's group events */
+    groupCache: {
+        get: (jid: string, force?: boolean) => Promise<import("../index.js").GroupMetadata>;
+        lookup: (jid: string) => import("../index.js").GroupMetadata | undefined;
+        set: (data: import("../index.js").GroupMetadata) => void;
+        delete: (jid: string) => boolean;
+        clear: () => void;
+        size: () => number;
+        bind: (ev: {
+            on: (event: any, listener: (arg: any) => void) => void;
+            off: (event: any, listener: (arg: any) => void) => void;
+        }) => () => void;
+        setFetcher: (fetch: (jid: string) => Promise<import("../index.js").GroupMetadata>) => void;
+    };
+    /** group metadata from the cache (asks WhatsApp only when it is missing or `fresh` is true) */
+    getGroup: (jid: string, fresh?: boolean) => Promise<import("../index.js").GroupMetadata>;
+    /** JIDs of the group's admins */
+    groupAdmins: (jid: string) => Promise<string[]>;
+    /** is `user` an admin of the group? works with a number, a JID or a LID */
+    isGroupAdmin: (jid: string, user: string) => Promise<boolean>;
+    /** is the linked account itself an admin of the group? */
+    isBotAdmin: (jid: string) => Promise<boolean>;
+    /** mention everybody (or only the admins) in a group */
+    tagAll: (jid: string, text?: string, options?: TagAllOptions) => Promise<WAMessage | undefined>;
+    /** text, sender, quoted, reply(), react() and download() for a received message */
+    serialize: (message: WAMessage) => {
+        key: import("../index.js").proto.IMessageKey & {
+            remoteJidAlt?: string;
+            remoteJidUsername?: string;
+            participantAlt?: string;
+            participantUsername?: string;
+            server_id?: string;
+            addressingMode?: string;
+            isViewOnce?: boolean;
+            editActorJid?: string;
+            editActorFromMe?: boolean;
+            editActorPushName?: string;
+        };
+        id: string;
+        chat: string;
+        isGroup: boolean;
+        fromMe: boolean;
+        sender: string;
+        pushName: string;
+        type: string | undefined;
+        text: string;
+        mentions: string[];
+        isMedia: boolean;
+        message: import("../index.js").proto.IMessage | undefined;
+        quoted: {
+            key: WAMessageKey;
+            id: string;
+            sender: string;
+            fromMe: boolean;
+            type: string | undefined;
+            text: string;
+            isMedia: boolean;
+            message: import("../index.js").proto.IMessage | undefined;
+            raw: WAMessage;
+            download: () => Promise<Buffer<ArrayBufferLike>>;
+        } | undefined;
+        raw: WAMessage;
+        reply: (reply: string | AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<any>;
+        send: (reply: string | AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<any>;
+        react: (emoji: string) => Promise<any>;
+        delete: () => Promise<any>;
+        download: () => Promise<Buffer<ArrayBufferLike>>;
+    };
+    /** call `handler` with the original message when somebody deletes a message for everyone */
+    onMessageDeleted: (handler: (event: DeletedMessageEvent) => unknown, options?: DeleteWatcherOptions) => {
+        stop: () => void;
+        size: () => number;
+        idle: () => Promise<void>;
+    };
+    /** show "typing..." (or "recording...") for a moment, then send */
+    sendWithTyping: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions & TypingOptions) => Promise<WAMessage | undefined>;
+    /** view, react to and collect incoming statuses */
+    autoStatus: (options?: AutoStatusOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     /** a queue that spaces out sendMessage calls, see createSendQueue */
     createSendQueue: (options?: SendQueueOptions) => {
-        send: <T = WAMessage | undefined>(jid: string, content: import("../index.js").AnyMessageContent, sendOptions?: MiscMessageGenerationOptions) => Promise<T>;
+        send: <T = WAMessage | undefined>(jid: string, content: AnyMessageContent, sendOptions?: MiscMessageGenerationOptions) => Promise<T>;
         readonly size: number;
         clear: () => void;
         idle: () => Promise<void>;
@@ -58,9 +164,23 @@ export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logge
 export declare const makeDexSocket: (config: SocketConfig) => {
     /**
      * React to a message with one or more stickers / photos (the round
-     * pictures WhatsApp shows around a message). `stickers` must be webp.
+     * pictures WhatsApp shows around a message). Animated webp stays
+     * animated; a photo, GIF or short video Buffer is converted first.
      */
-    sendStickerReaction: (key: WAMessageKey, stickers: WAMediaUpload | WAMediaUpload[], { count, delayMs }?: StickerReactionOptions) => Promise<string[]>;
+    sendStickerReaction: (key: WAMessageKey, stickers: WAMediaUpload | WAMediaUpload[], options?: StickerReactionOptions) => Promise<string[]>;
+    /** call `handler` when an emoji is put on a message (default: only by the linked account) */
+    onReactionTap: (handler: (event: ReactionTapEvent) => unknown, options?: ReactionTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
+    /**
+     * Emoji shortcut: when the linked account (or whoever `allow` accepts)
+     * puts an emoji on a message, that message gets the sticker reactions.
+     */
+    stickerReactOnTap: (stickers: WAMediaUpload | WAMediaUpload[], options?: StickerTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     /** same person? works across phone number, bare digits and LID */
     isSameUser: (a: string | undefined | null, b: string | undefined | null) => Promise<boolean>;
     /** phone-number JID and LID of a user, as far as they are known locally */
@@ -85,13 +205,104 @@ export declare const makeDexSocket: (config: SocketConfig) => {
         caption: string | undefined;
         data: T extends "stream" ? Transform : Buffer;
     }>;
+    /** group metadata cache, kept fresh from the socket's group events */
+    groupCache: {
+        get: (jid: string, force?: boolean) => Promise<import("../index.js").GroupMetadata>;
+        lookup: (jid: string) => import("../index.js").GroupMetadata | undefined;
+        set: (data: import("../index.js").GroupMetadata) => void;
+        delete: (jid: string) => boolean;
+        clear: () => void;
+        size: () => number;
+        bind: (ev: {
+            on: (event: any, listener: (arg: any) => void) => void;
+            off: (event: any, listener: (arg: any) => void) => void;
+        }) => () => void;
+        setFetcher: (fetch: (jid: string) => Promise<import("../index.js").GroupMetadata>) => void;
+    };
+    /** group metadata from the cache (asks WhatsApp only when it is missing or `fresh` is true) */
+    getGroup: (jid: string, fresh?: boolean) => Promise<import("../index.js").GroupMetadata>;
+    /** JIDs of the group's admins */
+    groupAdmins: (jid: string) => Promise<string[]>;
+    /** is `user` an admin of the group? works with a number, a JID or a LID */
+    isGroupAdmin: (jid: string, user: string) => Promise<boolean>;
+    /** is the linked account itself an admin of the group? */
+    isBotAdmin: (jid: string) => Promise<boolean>;
+    /** mention everybody (or only the admins) in a group */
+    tagAll: (jid: string, text?: string, options?: TagAllOptions) => Promise<WAMessage | undefined>;
+    /** text, sender, quoted, reply(), react() and download() for a received message */
+    serialize: (message: WAMessage) => {
+        key: import("../index.js").proto.IMessageKey & {
+            remoteJidAlt?: string;
+            remoteJidUsername?: string;
+            participantAlt?: string;
+            participantUsername?: string;
+            server_id?: string;
+            addressingMode?: string;
+            isViewOnce?: boolean;
+            editActorJid?: string;
+            editActorFromMe?: boolean;
+            editActorPushName?: string;
+        };
+        id: string;
+        chat: string;
+        isGroup: boolean;
+        fromMe: boolean;
+        sender: string;
+        pushName: string;
+        type: string | undefined;
+        text: string;
+        mentions: string[];
+        isMedia: boolean;
+        message: import("../index.js").proto.IMessage | undefined;
+        quoted: {
+            key: WAMessageKey;
+            id: string;
+            sender: string;
+            fromMe: boolean;
+            type: string | undefined;
+            text: string;
+            isMedia: boolean;
+            message: import("../index.js").proto.IMessage | undefined;
+            raw: WAMessage;
+            download: () => Promise<Buffer<ArrayBufferLike>>;
+        } | undefined;
+        raw: WAMessage;
+        reply: (reply: string | AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<any>;
+        send: (reply: string | AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<any>;
+        react: (emoji: string) => Promise<any>;
+        delete: () => Promise<any>;
+        download: () => Promise<Buffer<ArrayBufferLike>>;
+    };
+    /** call `handler` with the original message when somebody deletes a message for everyone */
+    onMessageDeleted: (handler: (event: DeletedMessageEvent) => unknown, options?: DeleteWatcherOptions) => {
+        stop: () => void;
+        size: () => number;
+        idle: () => Promise<void>;
+    };
+    /** show "typing..." (or "recording...") for a moment, then send */
+    sendWithTyping: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions & TypingOptions) => Promise<WAMessage | undefined>;
+    /** view, react to and collect incoming statuses */
+    autoStatus: (options?: AutoStatusOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     /** a queue that spaces out sendMessage calls, see createSendQueue */
     createSendQueue: (options?: SendQueueOptions) => {
-        send: <T = WAMessage | undefined>(jid: string, content: import("../index.js").AnyMessageContent, sendOptions?: MiscMessageGenerationOptions) => Promise<T>;
+        send: <T = WAMessage | undefined>(jid: string, content: AnyMessageContent, sendOptions?: MiscMessageGenerationOptions) => Promise<T>;
         readonly size: number;
         clear: () => void;
         idle: () => Promise<void>;
     };
+    groupParticipantsUpdate: (jid: string, participants: string[], action: import("../index.js").ParticipantAction) => Promise<{
+        status: string;
+        jid: string | undefined;
+        content: import("../index.js").BinaryNode;
+    }[]>;
+    groupRequestParticipantsUpdate: (jid: string, participants: string[], action: "reject" | "approve") => Promise<{
+        status: string;
+        jid: string | undefined;
+    }[]>;
+    groupLeave: (id: string) => Promise<void>;
     communityMetadata: (jid: string) => Promise<import("../index.js").GroupMetadata>;
     communityCreate: (subject: string, body: string) => Promise<import("../index.js").GroupMetadata | null>;
     communityCreateGroup: (subject: string, participants: string[], parentCommunityJid: string) => Promise<import("../index.js").GroupMetadata | null>;
@@ -161,7 +372,7 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     messageRetryManager: import("../index.js").MessageRetryManager | null;
     readStatus: (statusKey: WAMessageKey, authorJid?: string) => Promise<void>;
     reactToStatus: (statusKey: WAMessageKey, emoji: string, authorJid?: string) => Promise<string>;
-    sendStatus: (content: import("../index.js").AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    sendStatus: (content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     userDevicesCache: import("../index.js").PossiblyExtendedCacheStore | import("@cacheable/node-cache").NodeCache<import("../index.js").JidWithDevice[]>;
     devicesMutex: {
         mutex<T>(code: () => Promise<T> | T): Promise<T>;
@@ -188,7 +399,7 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     })[]>;
     updateMemberLabel: (jid: string, memberLabel: string) => Promise<string>;
     updateMediaMessage: (message: WAMessage) => Promise<WAMessage>;
-    sendMessage: (jid: string, content: import("../index.js").AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    sendMessage: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     newsletterCreate: (name: string, description?: string) => Promise<import("../index.js").NewsletterMetadata>;
     newsletterUpdate: (jid: string, updates: import("../index.js").NewsletterUpdate) => Promise<unknown>;
     newsletterSubscribers: (jid: string) => Promise<{
@@ -221,19 +432,9 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     newsletterDelete: (jid: string) => Promise<void>;
     groupMetadata: (jid: string) => Promise<import("../index.js").GroupMetadata>;
     groupCreate: (subject: string, participants: string[]) => Promise<import("../index.js").GroupMetadata>;
-    groupLeave: (id: string) => Promise<void>;
     groupUpdateSubject: (jid: string, subject: string) => Promise<void>;
     groupRequestParticipantsList: (jid: string) => Promise<{
         [key: string]: string;
-    }[]>;
-    groupRequestParticipantsUpdate: (jid: string, participants: string[], action: "approve" | "reject") => Promise<{
-        status: string;
-        jid: string | undefined;
-    }[]>;
-    groupParticipantsUpdate: (jid: string, participants: string[], action: import("../index.js").ParticipantAction) => Promise<{
-        status: string;
-        jid: string | undefined;
-        content: import("../index.js").BinaryNode;
     }[]>;
     groupUpdateDescription: (jid: string, description?: string) => Promise<void>;
     groupInviteCode: (jid: string) => Promise<string | undefined>;

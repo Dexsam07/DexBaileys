@@ -1,12 +1,12 @@
 <div align="center">
 
-# DexBaileys — v1.2.1
+# DexBaileys — v1.4.0
 
 **Fast, clean WhatsApp Web library for Node.js — buttons, photo reactions, channels, status and LID helpers built in.**
 
 Maintained by **Shyam Chaudhari** · **DEX SHYAM TECH**
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/Dexsam07/DexBaileys)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/Dexsam07/DexBaileys)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Channel](https://img.shields.io/badge/WhatsApp-DEX%20SHYAM%20TECH-25D366)](https://whatsapp.com/channel/0029VbBgXTsKwqSKZKy38w2o)
@@ -79,14 +79,42 @@ real phone before relying on one.
 
 ---
 
-### 2. Photo / sticker reactions
+### 2. Photo / sticker reactions (animated too)
 **File:** `src/Socket/dex.ts`
 
-Put up to 30 sticker or photo reactions on one message. Every distinct sticker is uploaded once and reused.
+Put up to 30 sticker or photo reactions on one message. Every distinct sticker is uploaded once and reused for 6 hours.
 
 ```js
 await sock.sendStickerReaction(msg.key, [stickerA, stickerB], { count: 16, delayMs: 300 })
 ```
+
+New in v1.3: moving stickers stay moving. An animated webp is detected on its own, and a photo, GIF or short video given as a Buffer is converted to a sticker first (first 6 seconds, 512x512, under 900 KB).
+
+```js
+import { makeStickerWebp, isAnimatedWebp } from 'dexbaileys'
+
+await sock.sendStickerReaction(msg.key, videoBuffer, { count: 10 }) // converted automatically
+
+const { data, isAnimated } = await makeStickerWebp(videoBuffer, { maxSeconds: 6, fps: 12 })
+```
+
+Photos and GIFs need the optional `sharp` package, videos need `ffmpeg` on the host. A ready webp needs neither.
+
+**Emoji tap shortcut (v1.3):** put an emoji on any message and that message gets the photo reactions, no command needed.
+
+```js
+// only the linked account's own emoji triggers it by default
+const tap = sock.stickerReactOnTap([stickerA, stickerB], { count: 16, delayMs: 300, emoji: ['🔥'] })
+tap.stop()
+
+// or run anything on an emoji tap
+sock.onReactionTap(async ({ key, emoji, reactor }) => { /* ... */ }, {
+	allow: e => sock.isSameUser(e.reactor, '917384287404'),
+	cooldownMs: 3000
+})
+```
+
+Removed reactions, reactions older than 60 seconds and taps inside the cooldown are ignored.
 
 ---
 
@@ -220,7 +248,105 @@ await queue.idle()
 
 ---
 
-### 12. More built in
+### 12. Session that survives a restart
+**File:** `src/Utils/dex-bot.ts`
+
+The whole session in one file (written atomically), plus a session string for hosts that wipe the disk on restart.
+
+```js
+import makeWASocket, { useSingleFileAuthState } from 'dexbaileys'
+
+const auth = await useSingleFileAuthState('data/session.json', { sessionId: process.env.SESSION_ID })
+const sock = makeWASocket({ auth: auth.state })
+sock.ev.on('creds.update', auth.saveCreds)
+
+// once logged in: put this string in the SESSION_ID env var
+const sessionId = auth.exportSessionId()
+```
+
+The session string works like a password. Never post it in a chat or a public repo.
+
+---
+
+### 13. Group cache and group helpers
+**Files:** `src/Utils/dex-bot.ts`, `src/Socket/dex.ts`
+
+Group metadata is cached inside the socket and kept fresh from group events, so admin checks and group sends do not ask WhatsApp every time.
+
+```js
+const group = await sock.getGroup(jid)            // cached
+const admins = await sock.groupAdmins(jid)
+if (await sock.isGroupAdmin(jid, sender)) { /* ... */ }
+if (await sock.isBotAdmin(jid)) { /* ... */ }
+
+await sock.tagAll(jid, 'Meeting at 9')            // hidden tag
+await sock.tagAll(jid, 'Admins', { adminsOnly: true, showList: true })
+```
+
+Pass your own `cachedGroupMetadata` in the config to use a different cache.
+
+---
+
+### 14. Message helper
+**File:** `src/Utils/dex-bot.ts`
+
+```js
+sock.ev.on('messages.upsert', async ({ messages }) => {
+	const m = sock.serialize(messages[0])
+	if (m.fromMe || !m.text) return
+
+	if (m.text === '.ping') await m.reply('pong')
+	if (m.text === '.save' && m.quoted?.isMedia) {
+		const file = await m.quoted.download()
+		await m.react('✅')
+	}
+})
+```
+
+`m.text` also returns the id of a tapped button or list row. Other fields: `m.chat`, `m.sender`, `m.isGroup`, `m.pushName`, `m.type`, `m.mentions`, `m.isMedia`, `m.quoted`, `m.send()`, `m.delete()`, `m.download()`.
+
+---
+
+### 15. Anti-delete
+**File:** `src/Utils/dex-bot.ts`
+
+```js
+const watcher = sock.onMessageDeleted(async ({ chat, deletedBy, message }) => {
+	if (message) await sock.sendMessage(chat, { forward: message })
+})
+// watcher.stop()
+```
+
+Only messages the bot saw while it was running can be restored (2,000 messages, 6 hours by default).
+
+---
+
+### 16. Send with typing
+**File:** `src/Socket/dex.ts`
+
+```js
+await sock.sendWithTyping(jid, { text: 'Hello there' })            // wait depends on text length
+await sock.sendWithTyping(jid, { text: 'Hi' }, { typingMs: 1500 })
+```
+
+---
+
+### 17. Status auto helper
+**File:** `src/Utils/dex-bot.ts`
+
+```js
+const auto = sock.autoStatus({
+	react: ['🔥', '❤️'],
+	onStatus: async status => {
+		if (status.isMedia) await fs.promises.writeFile(`status-${status.key.id}`, await status.download())
+	}
+})
+// auto.stop()
+```
+
+---
+
+### 18. More built in
 
 - Encrypted message edits are decrypted and emitted as `messages.update`
 - `makeInMemoryStore` is included (bounded history, JSON snapshot)
@@ -315,7 +441,7 @@ Use responsibly and in accordance with WhatsApp's Terms of Service. Button, caro
 
 <div align="center">
 
-**DexBaileys v1.2.1** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
+**DexBaileys v1.4.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
 
 MIT licence · see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
 

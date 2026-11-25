@@ -1,6 +1,14 @@
 import type { UserFacingSocketConfig } from '../Types/index.js';
 declare const makeWASocket: (config: UserFacingSocketConfig) => {
-    sendStickerReaction: (key: import("../index.js").WAMessageKey, stickers: import("../index.js").WAMediaUpload | import("../index.js").WAMediaUpload[], { count, delayMs }?: import("./dex.js").StickerReactionOptions) => Promise<string[]>;
+    sendStickerReaction: (key: import("../index.js").WAMessageKey, stickers: import("../index.js").WAMediaUpload | import("../index.js").WAMediaUpload[], options?: import("./dex.js").StickerReactionOptions) => Promise<string[]>;
+    onReactionTap: (handler: (event: import("../index.js").ReactionTapEvent) => unknown, options?: import("../index.js").ReactionTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
+    stickerReactOnTap: (stickers: import("../index.js").WAMediaUpload | import("../index.js").WAMediaUpload[], options?: import("./dex.js").StickerTapOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     isSameUser: (a: string | undefined | null, b: string | undefined | null) => Promise<boolean>;
     resolveUserJids: (jid: string) => Promise<{
         pn?: string;
@@ -18,12 +26,93 @@ declare const makeWASocket: (config: UserFacingSocketConfig) => {
         caption: string | undefined;
         data: T extends "stream" ? import("stream").Transform : Buffer;
     }>;
+    groupCache: {
+        get: (jid: string, force?: boolean) => Promise<import("../index.js").GroupMetadata>;
+        lookup: (jid: string) => import("../index.js").GroupMetadata | undefined;
+        set: (data: import("../index.js").GroupMetadata) => void;
+        delete: (jid: string) => boolean;
+        clear: () => void;
+        size: () => number;
+        bind: (ev: {
+            on: (event: any, listener: (arg: any) => void) => void;
+            off: (event: any, listener: (arg: any) => void) => void;
+        }) => () => void;
+        setFetcher: (fetch: (jid: string) => Promise<import("../index.js").GroupMetadata>) => void;
+    };
+    getGroup: (jid: string, fresh?: boolean) => Promise<import("../index.js").GroupMetadata>;
+    groupAdmins: (jid: string) => Promise<string[]>;
+    isGroupAdmin: (jid: string, user: string) => Promise<boolean>;
+    isBotAdmin: (jid: string) => Promise<boolean>;
+    tagAll: (jid: string, text?: string, options?: import("./dex.js").TagAllOptions) => Promise<import("../index.js").WAMessage | undefined>;
+    serialize: (message: import("../index.js").WAMessage) => {
+        key: import("../index.js").proto.IMessageKey & {
+            remoteJidAlt?: string;
+            remoteJidUsername?: string;
+            participantAlt?: string;
+            participantUsername?: string;
+            server_id?: string;
+            addressingMode?: string;
+            isViewOnce?: boolean;
+            editActorJid?: string;
+            editActorFromMe?: boolean;
+            editActorPushName?: string;
+        };
+        id: string;
+        chat: string;
+        isGroup: boolean;
+        fromMe: boolean;
+        sender: string;
+        pushName: string;
+        type: string | undefined;
+        text: string;
+        mentions: string[];
+        isMedia: boolean;
+        message: import("../index.js").proto.IMessage | undefined;
+        quoted: {
+            key: import("../index.js").WAMessageKey;
+            id: string;
+            sender: string;
+            fromMe: boolean;
+            type: string | undefined;
+            text: string;
+            isMedia: boolean;
+            message: import("../index.js").proto.IMessage | undefined;
+            raw: import("../index.js").WAMessage;
+            download: () => Promise<Buffer<ArrayBufferLike>>;
+        } | undefined;
+        raw: import("../index.js").WAMessage;
+        reply: (reply: string | import("../index.js").AnyMessageContent, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<any>;
+        send: (reply: string | import("../index.js").AnyMessageContent, options?: import("../index.js").MiscMessageGenerationOptions) => Promise<any>;
+        react: (emoji: string) => Promise<any>;
+        delete: () => Promise<any>;
+        download: () => Promise<Buffer<ArrayBufferLike>>;
+    };
+    onMessageDeleted: (handler: (event: import("../index.js").DeletedMessageEvent) => unknown, options?: import("../index.js").DeleteWatcherOptions) => {
+        stop: () => void;
+        size: () => number;
+        idle: () => Promise<void>;
+    };
+    sendWithTyping: (jid: string, content: import("../index.js").AnyMessageContent, options?: import("../index.js").MiscMessageGenerationOptions & import("../index.js").TypingOptions) => Promise<import("../index.js").WAMessage | undefined>;
+    autoStatus: (options?: import("../index.js").AutoStatusOptions) => {
+        stop: () => void;
+        idle: () => Promise<void>;
+    };
     createSendQueue: (options?: import("../index.js").SendQueueOptions) => {
         send: <T = import("../index.js").WAMessage | undefined>(jid: string, content: import("../index.js").AnyMessageContent, sendOptions?: import("../index.js").MiscMessageGenerationOptions) => Promise<T>;
         readonly size: number;
         clear: () => void;
         idle: () => Promise<void>;
     };
+    groupParticipantsUpdate: (jid: string, participants: string[], action: import("../index.js").ParticipantAction) => Promise<{
+        status: string;
+        jid: string | undefined;
+        content: import("../index.js").BinaryNode;
+    }[]>;
+    groupRequestParticipantsUpdate: (jid: string, participants: string[], action: "reject" | "approve") => Promise<{
+        status: string;
+        jid: string | undefined;
+    }[]>;
+    groupLeave: (id: string) => Promise<void>;
     communityMetadata: (jid: string) => Promise<import("../index.js").GroupMetadata>;
     communityCreate: (subject: string, body: string) => Promise<import("../index.js").GroupMetadata | null>;
     communityCreateGroup: (subject: string, participants: string[], parentCommunityJid: string) => Promise<import("../index.js").GroupMetadata | null>;
@@ -153,19 +242,9 @@ declare const makeWASocket: (config: UserFacingSocketConfig) => {
     newsletterDelete: (jid: string) => Promise<void>;
     groupMetadata: (jid: string) => Promise<import("../index.js").GroupMetadata>;
     groupCreate: (subject: string, participants: string[]) => Promise<import("../index.js").GroupMetadata>;
-    groupLeave: (id: string) => Promise<void>;
     groupUpdateSubject: (jid: string, subject: string) => Promise<void>;
     groupRequestParticipantsList: (jid: string) => Promise<{
         [key: string]: string;
-    }[]>;
-    groupRequestParticipantsUpdate: (jid: string, participants: string[], action: "approve" | "reject") => Promise<{
-        status: string;
-        jid: string | undefined;
-    }[]>;
-    groupParticipantsUpdate: (jid: string, participants: string[], action: import("../index.js").ParticipantAction) => Promise<{
-        status: string;
-        jid: string | undefined;
-        content: import("../index.js").BinaryNode;
     }[]>;
     groupUpdateDescription: (jid: string, description?: string) => Promise<void>;
     groupInviteCode: (jid: string) => Promise<string | undefined>;

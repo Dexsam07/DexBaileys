@@ -4,6 +4,75 @@ import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage, WAMess
 export declare const MAX_STICKER_REACTIONS = 30;
 /** Wrap an uploaded sticker so that it is attached to `key` as a sticker reaction */
 export declare const buildStickerReaction: (sticker: proto.Message.IStickerMessage, key: WAMessageKey) => proto.IMessage;
+/** true when `data` is a webp file */
+export declare const isWebp: (data: Uint8Array | null | undefined) => boolean;
+/** true when `data` is a webp file that moves (animation flag or ANIM / ANMF chunk) */
+export declare const isAnimatedWebp: (data: Uint8Array | null | undefined) => boolean;
+export type StickerWebpOptions = {
+    /** width and height of the sticker (default 512) */
+    size?: number;
+    /** only the first seconds of a video / GIF are used (default 6) */
+    maxSeconds?: number;
+    /** frames per second for a video (default 12) */
+    fps?: number;
+    /** webp quality 1 to 100 (default 60) */
+    quality?: number;
+    /** the result is squeezed until it is below this size (default 900 KB) */
+    maxBytes?: number;
+    /** ffmpeg binary (default "ffmpeg") */
+    ffmpegPath?: string;
+};
+/**
+ * Turn a photo, GIF, animated webp or short video into a sticker webp.
+ * Moving input stays moving. Photos / GIFs need the optional `sharp` package,
+ * videos need `ffmpeg` on the host.
+ */
+export declare const makeStickerWebp: (input: Buffer, options?: StickerWebpOptions) => Promise<{
+    data: Buffer;
+    isAnimated: boolean;
+}>;
+export type ReactionTapEvent = {
+    /** the message that got the emoji */
+    key: WAMessageKey;
+    /** the emoji */
+    emoji: string;
+    /** who reacted */
+    reactor: string;
+    /** true when the linked account itself reacted */
+    fromMe: boolean;
+};
+export type ReactionTapOptions = {
+    /** only these emoji trigger the handler (default: any emoji) */
+    emoji?: string | string[];
+    /** who may trigger it (default: only the linked account itself) */
+    allow?: (event: ReactionTapEvent) => boolean | Promise<boolean>;
+    /** ignore taps that follow the last accepted one faster than this (default 3000 ms) */
+    cooldownMs?: number;
+    /** ignore reactions older than this, e.g. after a reconnect (default 60000 ms) */
+    maxAgeMs?: number;
+    onError?: (error: unknown, event: ReactionTapEvent) => void;
+    /** for tests */
+    now?: () => number;
+};
+type ReactionEmitter = {
+    on: (event: 'messages.reaction', listener: (items: {
+        key: WAMessageKey;
+        reaction: proto.IReaction;
+    }[]) => void) => void;
+    off: (event: 'messages.reaction', listener: (items: {
+        key: WAMessageKey;
+        reaction: proto.IReaction;
+    }[]) => void) => void;
+};
+/**
+ * Calls `handler` when somebody puts an emoji on a message, so "tap an emoji"
+ * can be used as a shortcut for a command. Removed reactions are ignored.
+ */
+export declare const createReactionTap: (ev: ReactionEmitter, handler: (event: ReactionTapEvent) => unknown, options?: ReactionTapOptions) => {
+    stop: () => void;
+    /** resolves when every tap received so far has been handled */
+    idle: () => Promise<void>;
+};
 export type JidLookup = {
     getLIDForPN: (pn: string) => Promise<string | null>;
     getPNForLID: (lid: string) => Promise<string | null>;

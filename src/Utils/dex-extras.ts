@@ -1,6 +1,8 @@
 import { Boom } from '@hapi/boom'
+import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
-import { dirname } from 'path'
+import { tmpdir } from 'os'
+import { dirname, join } from 'path'
 import { proto } from '../../WAProto/index.js'
 import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage, WAMessageKey, WAVersion } from '../Types'
 import { isLidUser, isPnUser, jidDecode, jidNormalizedUser } from '../WABinary'
@@ -31,6 +33,238 @@ export const buildStickerReaction = (sticker: proto.Message.IStickerMessage, key
 				}
 			}
 		}
+	}
+}
+
+const isRiffWebp = (data: Uint8Array) =>
+	data.length >= 16 &&
+	Buffer.from(data.subarray(0, 4)).toString('latin1') === 'RIFF' &&
+	Buffer.from(data.subarray(8, 12)).toString('latin1') === 'WEBP'
+
+/** true when `data` is a webp file */
+export const isWebp = (data: Uint8Array | null | undefined): boolean => !!data && isRiffWebp(data)
+
+/** true when `data` is a webp file that moves (animation flag or ANIM / ANMF chunk) */
+export const isAnimatedWebp = (data: Uint8Array | null | undefined): boolean => {
+	if (!data || !isRiffWebp(data)) return false
+	const view = Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+	let offset = 12
+	while (offset + 8 <= view.length) {
+		const id = view.toString('latin1', offset, offset + 4)
+		const size = view.readUInt32LE(offset + 4)
+		if (id === 'ANIM' || id === 'ANMF') return true
+		if (id === 'VP8X' && offset + 8 < view.length && (view[offset + 8]! & 0x02) !== 0) return true
+		offset += 8 + size + (size % 2)
+	}
+
+	return false
+}
+
+export type StickerWebpOptions = {
+	/** width and height of the sticker (default 512) */
+	size?: number
+	/** only the first seconds of a video / GIF are used (default 6) */
+	maxSeconds?: number
+	/** frames per second for a video (default 12) */
+	fps?: number
+	/** webp quality 1 to 100 (default 60) */
+	quality?: number
+	/** the result is squeezed until it is below this size (default 900 KB) */
+	maxBytes?: number
+	/** ffmpeg binary (default "ffmpeg") */
+	ffmpegPath?: string
+}
+
+type MediaKind = 'webp' | 'gif' | 'image' | 'video'
+
+const sniffMedia = (data: Buffer): MediaKind => {
+	if (isRiffWebp(data)) return 'webp'
+	const head = data.toString('latin1', 0, 6)
+	if (head === 'GIF87a' || head === 'GIF89a') return 'gif'
+	if (data[0] === 0xff && data[1] === 0xd8) return 'image'
+	if (data.toString('latin1', 1, 4) === 'PNG') return 'image'
+	return 'video'
+}
+
+const runFfmpeg = (binary: string, args: string[]) =>
+	new Promise<void>((resolve, reject) => {
+		const child = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+		let stderr = ''
+		child.stderr.on('data', chunk => {
+			stderr = (stderr + chunk).slice(-600)
+		})
+		child.on('error', () =>
+			reject(new Boom('ffmpeg is needed to turn a video into an animated sticker', { statusCode: 501 }))
+		)
+		child.on('close', code =>
+			code === 0 ? resolve() : reject(new Boom(`ffmpeg could not convert the video: ${stderr.trim()}`, { statusCode: 422 }))
+		)
+	})
+
+/**
+ * Turn a photo, GIF, animated webp or short video into a sticker webp.
+ * Moving input stays moving. Photos / GIFs need the optional `sharp` package,
+ * videos need `ffmpeg` on the host.
+ */
+export const makeStickerWebp = async (
+	input: Buffer,
+	options: StickerWebpOptions = {}
+): Promise<{ data: Buffer; isAnimated: boolean }> => {
+	if (!Buffer.isBuffer(input) || !input.length) {
+		throw new Boom('makeStickerWebp needs the media as a Buffer', { statusCode: 400 })
+	}
+
+	const size = options.size ?? 512
+	const maxBytes = options.maxBytes ?? 900 * 1024
+	const maxSeconds = options.maxSeconds ?? 6
+	const kind = sniffMedia(input)
+
+	if (kind === 'webp' && input.length <= maxBytes) {
+		return { data: input, isAnimated: isAnimatedWebp(input) }
+	}
+
+	if (kind === 'video') {
+		const base = join(tmpdir(), `dex-sticker-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+		const source = `${base}.bin`
+		const target = `${base}.webp`
+		try {
+			await fs.writeFile(source, input)
+			let fps = options.fps ?? 12
+			let quality = options.quality ?? 60
+			let data: Buffer = Buffer.alloc(0)
+			for (let attempt = 0; attempt < 4; attempt++) {
+				const filter =
+					`fps=${fps},scale=${size}:${size}:force_original_aspect_ratio=decrease,` +
+					`pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`
+				await runFfmpeg(options.ffmpegPath ?? 'ffmpeg', [
+					'-y', '-t', String(maxSeconds), '-i', source, '-an', '-vf', filter,
+					'-c:v', 'libwebp', '-loop', '0', '-q:v', String(quality), '-compression_level', '4', target
+				])
+				data = await fs.readFile(target)
+				if (data.length <= maxBytes) break
+				fps = Math.max(6, fps - 3)
+				quality = Math.max(15, quality - 15)
+			}
+
+			if (data.length > maxBytes) {
+				throw new Boom('the video is too long or too detailed for a sticker', { statusCode: 413 })
+			}
+
+			return { data, isAnimated: isAnimatedWebp(data) }
+		} finally {
+			await fs.rm(source, { force: true }).catch(() => {})
+			await fs.rm(target, { force: true }).catch(() => {})
+		}
+	}
+
+	const sharp = await import('sharp').then(
+		mod => (mod as any).default ?? mod,
+		() => {
+			throw new Boom('the "sharp" package is needed to turn a photo or GIF into a sticker', { statusCode: 501 })
+		}
+	)
+	const animated = kind === 'gif' || (kind === 'webp' && isAnimatedWebp(input))
+	let quality = options.quality ?? 60
+	let data: Buffer = Buffer.alloc(0)
+	for (let attempt = 0; attempt < 4; attempt++) {
+		data = await sharp(input, { animated })
+			.resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+			.webp({ quality })
+			.toBuffer()
+		if (data.length <= maxBytes) break
+		quality = Math.max(10, quality - 15)
+	}
+
+	if (data.length > maxBytes) {
+		throw new Boom('the picture is too large for a sticker', { statusCode: 413 })
+	}
+
+	return { data, isAnimated: isAnimatedWebp(data) }
+}
+
+export type ReactionTapEvent = {
+	/** the message that got the emoji */
+	key: WAMessageKey
+	/** the emoji */
+	emoji: string
+	/** who reacted */
+	reactor: string
+	/** true when the linked account itself reacted */
+	fromMe: boolean
+}
+
+export type ReactionTapOptions = {
+	/** only these emoji trigger the handler (default: any emoji) */
+	emoji?: string | string[]
+	/** who may trigger it (default: only the linked account itself) */
+	allow?: (event: ReactionTapEvent) => boolean | Promise<boolean>
+	/** ignore taps that follow the last accepted one faster than this (default 3000 ms) */
+	cooldownMs?: number
+	/** ignore reactions older than this, e.g. after a reconnect (default 60000 ms) */
+	maxAgeMs?: number
+	onError?: (error: unknown, event: ReactionTapEvent) => void
+	/** for tests */
+	now?: () => number
+}
+
+type ReactionEmitter = {
+	on: (event: 'messages.reaction', listener: (items: { key: WAMessageKey; reaction: proto.IReaction }[]) => void) => void
+	off: (event: 'messages.reaction', listener: (items: { key: WAMessageKey; reaction: proto.IReaction }[]) => void) => void
+}
+
+/**
+ * Calls `handler` when somebody puts an emoji on a message, so "tap an emoji"
+ * can be used as a shortcut for a command. Removed reactions are ignored.
+ */
+export const createReactionTap = (
+	ev: ReactionEmitter,
+	handler: (event: ReactionTapEvent) => unknown,
+	options: ReactionTapOptions = {}
+) => {
+	const wanted = options.emoji ? new Set(([] as string[]).concat(options.emoji)) : undefined
+	const allow = options.allow ?? ((event: ReactionTapEvent) => event.fromMe)
+	const cooldownMs = options.cooldownMs ?? 3000
+	const maxAgeMs = options.maxAgeMs ?? 60_000
+	const now = options.now ?? Date.now
+	let lastAccepted = -Infinity
+	let chain: Promise<void> = Promise.resolve()
+
+	const handle = async (item: { key: WAMessageKey; reaction: proto.IReaction }) => {
+		const emoji = item?.reaction?.text
+		const reactionKey = item?.reaction?.key
+		if (!emoji || !item.key?.remoteJid || !item.key.id) return
+		if (wanted && !wanted.has(emoji)) return
+
+		const sentAt = Number(item.reaction.senderTimestampMs ?? 0)
+		if (sentAt > 0 && now() - sentAt > maxAgeMs) return
+
+		const event: ReactionTapEvent = {
+			key: item.key,
+			emoji,
+			reactor: reactionKey?.participant || reactionKey?.remoteJid || '',
+			fromMe: !!reactionKey?.fromMe
+		}
+		try {
+			if (!(await allow(event))) return
+			if (now() - lastAccepted < cooldownMs) return
+			lastAccepted = now()
+			await handler(event)
+		} catch (error) {
+			options.onError?.(error, event)
+		}
+	}
+
+	const listener = (items: { key: WAMessageKey; reaction: proto.IReaction }[]) => {
+		for (const item of items || []) {
+			chain = chain.then(() => handle(item))
+		}
+	}
+
+	ev.on('messages.reaction', listener)
+	return {
+		stop: () => ev.off('messages.reaction', listener),
+		/** resolves when every tap received so far has been handled */
+		idle: () => chain
 	}
 }
 
