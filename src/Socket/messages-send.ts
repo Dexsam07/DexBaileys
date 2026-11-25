@@ -36,6 +36,7 @@ import {
 	parseAndInjectE2ESessions,
 	unixTimestampSeconds
 } from '../Utils'
+import { withTimeLimit } from '../Utils/dex-store'
 import { getUrlInfo } from '../Utils/link-preview'
 import { makeKeyedMutex, makeMutex } from '../Utils/make-mutex'
 import { getMessageReportingToken, shouldIncludeReportingToken } from '../Utils/reporting-utils'
@@ -110,7 +111,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 	const userDevicesCache =
 		config.userDevicesCache ||
 		new NodeCache<JidWithDevice[]>({
-			stdTTL: DEFAULT_CACHE_TTLS.USER_DEVICES, // 5 minutes
+			stdTTL: DEFAULT_CACHE_TTLS.USER_DEVICES, // 30 minutes
 			useClones: false
 		})
 	/** Serializes writes to userDevicesCache across USync refresh and device-notification handling. */
@@ -1374,16 +1375,21 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 				const fullMsg = await generateWAMessage(jid, content, {
 					logger,
 					userJid,
+					// a slow site must not hold the message back: past the limit the
+					// text goes out without a preview
 					getUrlInfo: text =>
-						getUrlInfo(text, {
-							thumbnailWidth: linkPreviewImageThumbnailWidth,
-							fetchOpts: {
-								timeout: 3_000,
-								...(httpRequestOptions || {})
-							},
-							logger,
-							uploadImage: generateHighQualityLinkPreview ? waUploadToServer : undefined
-						}),
+						withTimeLimit(
+							getUrlInfo(text, {
+								thumbnailWidth: linkPreviewImageThumbnailWidth,
+								fetchOpts: {
+									timeout: 3_000,
+									...(httpRequestOptions || {})
+								},
+								logger,
+								uploadImage: generateHighQualityLinkPreview ? waUploadToServer : undefined
+							}),
+							config.linkPreviewTimeoutMs ?? 2500
+						),
 					//TODO: CACHE
 					getProfilePicUrl: sock.profilePictureUrl,
 					getCallLink: sock.createCallLink,

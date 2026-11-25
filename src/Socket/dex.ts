@@ -28,6 +28,7 @@ import {
 	downloadMediaMessage,
 	extractViewOnceContent,
 	findGroupParticipant,
+	quietSignalLogs,
 	generateMessageIDV2,
 	type GroupCache,
 	groupAdminsOf,
@@ -247,6 +248,15 @@ export const makeDexHelpers = (sock: DexBase, logger: SocketConfig['logger'], sh
 		cancelScheduled: scheduler.cancel,
 		listScheduled: scheduler.list,
 
+		/** photo or video with a larger, sharper preview; the file itself is sent as it is */
+		sendHD: (jid: string, content: AnyMediaMessageContent, options: MiscMessageGenerationOptions = {}) => {
+			if (!('image' in content) && !('video' in content)) {
+				throw new Boom('sendHD needs an image or a video', { statusCode: 400 })
+			}
+
+			return sock.sendMessage(jid, { ...content, hd: true } as AnyMessageContent, options)
+		},
+
 		/** experimental: content hidden behind a tap-to-reveal blur */
 		sendSpoiler: (jid: string, content: AnyMessageContent, options: MiscMessageGenerationOptions = {}) =>
 			sock.sendMessage(jid, { ...content, spoiler: true } as AnyMessageContent, options),
@@ -455,6 +465,10 @@ export const makeDexHelpers = (sock: DexBase, logger: SocketConfig['logger'], sh
 
 /** DexBaileys helpers on top of the regular socket */
 export const makeDexSocket = (config: SocketConfig) => {
+	if (config.quietSignalLogs !== false && process.env.DEX_BAILEYS_VERBOSE !== '1') {
+		quietSignalLogs()
+	}
+
 	// group sends read the participants from the built-in cache unless the
 	// caller brought a cache of their own
 	const groupCache = createGroupCache()

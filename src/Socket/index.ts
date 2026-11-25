@@ -6,7 +6,9 @@ import { makeDexSocket } from './dex'
 const makeWASocket = (config: UserFacingSocketConfig) => {
 	const newConfig = {
 		...DEFAULT_CONNECTION_CONFIG,
-		...config
+		...config,
+		// a version the caller chose is left alone unless they ask for the sync too
+		syncWaWebVersion: config.syncWaWebVersion ?? config.version === undefined
 	}
 
 	return makeDexSocket(newConfig)

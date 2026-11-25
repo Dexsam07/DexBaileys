@@ -44,7 +44,9 @@ import {
 	makeNoiseHandler,
 	promiseTimeout,
 	signedKeyPair,
-	xmppSignedPreKey
+	xmppSignedPreKey,
+	clearWaWebVersionCache,
+	resolveWaWebVersion
 } from '../Utils'
 import {
 	assertNodeErrorFree,
@@ -461,6 +463,15 @@ export const makeSocket = (config: SocketConfig) => {
 
 		const keyEnc = noise.processHandshake(handshake, creds.noiseKey)
 
+		// the payload below announces the client version, so settle it first
+		if (config.syncWaWebVersion) {
+			const live = await resolveWaWebVersion({ bundled: config.version, timeoutMs: 3000 })
+			if (live && live.join('.') !== config.version?.join('.')) {
+				logger.info({ version: live, previousVersion: config.version }, 'using the live WA Web version')
+				config.version = live
+			}
+		}
+
 		let node: proto.IClientPayload
 		if (!creds.me) {
 			node = generateRegistrationNode(creds, config)
@@ -663,6 +674,11 @@ export const makeSocket = (config: SocketConfig) => {
 			rejectConnectionReady = undefined
 		}
 		logger.info({ trace: error?.stack }, error ? 'connection errored' : 'connection closed')
+
+		// a 405 means WhatsApp turned down the version announced, so never reuse it
+		if (error instanceof Boom && error.output?.statusCode === 405) {
+			clearWaWebVersionCache()
+		}
 
 		clearInterval(keepAliveReq)
 		clearTimeout(qrTimer)

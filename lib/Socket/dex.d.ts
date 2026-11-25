@@ -60,6 +60,8 @@ export declare const makeDexHelpers: (sock: DexBase, logger: SocketConfig["logge
     schedule: (jid: string, content: AnyMessageContent, when: Date | number, sendOptions?: MiscMessageGenerationOptions) => import("../index.js").ScheduledMessage;
     cancelScheduled: (id: string) => boolean;
     listScheduled: () => import("../index.js").ScheduledMessage[];
+    /** photo or video with a larger, sharper preview; the file itself is sent as it is */
+    sendHD: (jid: string, content: AnyMediaMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** experimental: content hidden behind a tap-to-reveal blur */
     sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** find the account behind a WhatsApp @username */
@@ -240,6 +242,8 @@ export declare const makeDexSocket: (config: SocketConfig) => {
     schedule: (jid: string, content: AnyMessageContent, when: Date | number, sendOptions?: MiscMessageGenerationOptions) => import("../index.js").ScheduledMessage;
     cancelScheduled: (id: string) => boolean;
     listScheduled: () => import("../index.js").ScheduledMessage[];
+    /** photo or video with a larger, sharper preview; the file itself is sent as it is */
+    sendHD: (jid: string, content: AnyMediaMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** experimental: content hidden behind a tap-to-reveal blur */
     sendSpoiler: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     /** find the account behind a WhatsApp @username */

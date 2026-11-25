@@ -1,6 +1,7 @@
 import type { AnyMessageContent, BaileysEventMap, MiscMessageGenerationOptions } from '../Types/index.js';
 import { type BinaryNode } from '../WABinary/index.js';
 import { type SessionData } from './dex-bot.js';
+import { type DexKeyValueStore } from './dex-store.js';
 export type StickerExifOptions = {
     /** pack name shown under the sticker */
     pack?: string;
@@ -49,12 +50,16 @@ export type SessionLocation = {
 };
 /**
  * Copy a login from one place to another without pairing again:
- * a session folder, a single session file, or a session string.
+ * a session folder, a single session file, or a session string. The target
+ * can also be a database store (see `useKeyValueAuthState`).
  */
 export declare const migrateSession: (from: SessionLocation, to: {
     folder: string;
 } | {
     file: string;
+} | {
+    store: DexKeyValueStore;
+    prefix?: string;
 }) => Promise<{
     keys: number;
     skipped: string[];

@@ -6,6 +6,7 @@ import { proto } from '../../WAProto/index.js'
 import type { AnyMessageContent, BaileysEventMap, MiscMessageGenerationOptions, SignalDataTypeMap } from '../Types'
 import { type BinaryNode, getBinaryNodeChild, getBinaryNodeChildren } from '../WABinary'
 import { type SessionData, importSessionId, useSingleFileAuthState } from './dex-bot'
+import { type DexKeyValueStore, useKeyValueAuthState } from './dex-store'
 import { BufferJSON } from './generics'
 import { useMultiFileAuthState } from './use-multi-file-auth-state'
 
@@ -293,9 +294,13 @@ export type SessionLocation = { folder: string } | { file: string } | { sessionI
 
 /**
  * Copy a login from one place to another without pairing again:
- * a session folder, a single session file, or a session string.
+ * a session folder, a single session file, or a session string. The target
+ * can also be a database store (see `useKeyValueAuthState`).
  */
-export const migrateSession = async (from: SessionLocation, to: { folder: string } | { file: string }) => {
+export const migrateSession = async (
+	from: SessionLocation,
+	to: { folder: string } | { file: string } | { store: DexKeyValueStore; prefix?: string }
+) => {
 	let data: SessionData
 	let skipped: string[] = []
 	if ('folder' in from) {
@@ -325,6 +330,15 @@ export const migrateSession = async (from: SessionLocation, to: { folder: string
 		Object.assign(target.state.creds, data.creds)
 		await target.saveCreds()
 		await target.state.keys.set(data.keys as any)
+	} else if ('store' in to) {
+		const target = await useKeyValueAuthState(to.store, { prefix: to.prefix })
+		if (target.state.creds.me) {
+			throw new Boom('that database already holds a login; clear it first', { statusCode: 409 })
+		}
+
+		Object.assign(target.state.creds, data.creds)
+		await target.state.keys.set(data.keys as any)
+		await target.saveCreds()
 	} else {
 		const exists = await fs.stat(to.file).then(
 			() => true,

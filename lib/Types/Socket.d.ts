@@ -49,6 +49,16 @@ export type SocketConfig = {
     logger: ILogger;
     /** version to connect with */
     version: WAVersion;
+    /**
+     * ask WhatsApp for the web version it is serving right now before logging in
+     * (kept for an hour). On by default when `version` is not given; passing a
+     * `version` pins it unless this is set to true as well.
+     */
+    syncWaWebVersion?: boolean;
+    /** hide the routine session dumps the Signal library prints to the console. default true */
+    quietSignalLogs?: boolean;
+    /** send the text without a preview when building the link preview takes longer than this. default 2500 */
+    linkPreviewTimeoutMs?: number;
     /** override browser config */
     browser: WABrowserDescription;
     /** Initial pushName carried in the registration ClientPayload (used by mock servers for deterministic phone assignment). */

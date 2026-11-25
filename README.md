@@ -1,12 +1,12 @@
 <div align="center">
 
-# DexBaileys — v1.5.0
+# DexBaileys — v1.6.0
 
 **Fast, clean WhatsApp Web library for Node.js — buttons, photo reactions, channels, status and LID helpers built in.**
 
 Maintained by **Shyam Chaudhari** · **DEX SHYAM TECH**
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/Dexsam07/DexBaileys)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue)](https://github.com/Dexsam07/DexBaileys)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Channel](https://img.shields.io/badge/WhatsApp-DEX%20SHYAM%20TECH-25D366)](https://whatsapp.com/channel/0029VbBgXTsKwqSKZKy38w2o)
@@ -427,7 +427,61 @@ sock.health(10 * 60 * 1000) // healthy only if something arrived in the last 10 
 
 ---
 
-### 24. More built in
+### 24. Session in a database
+**File:** `src/Utils/dex-store.ts`
+
+For hosts that wipe files on every restart (Railway, Render, Heroku, Koyeb). No extra package is installed by DexBaileys; bring the database client you already use.
+
+```js
+import { useKeyValueAuthState, mongoKeyValueStore, redisKeyValueStore } from 'dexbaileys'
+
+// MongoDB
+const { state, saveCreds, clear } = await useKeyValueAuthState(
+  mongoKeyValueStore(db.collection('session')),
+  { prefix: 'bot1:', sessionId: process.env.SESSION_ID } // both optional
+)
+
+// Redis (ioredis or node-redis)
+await useKeyValueAuthState(redisKeyValueStore(redis))
+
+// Keyv (any Keyv backend: SQLite, Postgres, MySQL, ...)
+await useKeyValueAuthState(new Keyv('sqlite://session.sqlite'))
+
+const sock = makeWASocket({ auth: state })
+sock.ev.on('creds.update', saveCreds)
+await clear() // after a logout
+
+// move an existing login into the database, no pairing again
+await migrateSession({ folder: 'auth_info' }, { store: mongoKeyValueStore(db.collection('session')) })
+```
+
+---
+
+### 25. Speed pack
+**Files:** `src/Utils/dex-store.ts`, `src/Defaults/index.ts`, `src/Socket/socket.ts`
+
+Nothing to call, it is on by default:
+
+- Device list cache lives 30 minutes (was 5) and the Signal key cache 15 minutes (was 5), so fewer lookups before each send
+- Each connect asks WhatsApp which web version it is serving (kept for 1 hour, dropped on a `405`), so pairing does not fail on an old version. Passing your own `version` pins it; add `syncWaWebVersion: true` to keep the sync as well, or `syncWaWebVersion: false` to switch it off
+- The Signal library's session dumps are hidden from the console (`quietSignalLogs: false` or `DEX_BAILEYS_VERBOSE=1` shows them again; errors are never hidden)
+- A link preview that takes longer than 2.5 seconds is skipped and the text goes out without it (`linkPreviewTimeoutMs`)
+
+---
+
+### 26. HD photo and video
+**Files:** `src/Utils/messages.ts`, `src/Utils/messages-media.ts`
+
+```js
+await sock.sendMessage(jid, { image: { url: './photo.jpg' }, caption: 'HD', hd: true })
+await sock.sendHD(jid, { video: { url: './clip.mp4' } })
+```
+
+DexBaileys never re-compresses your file, with or without `hd`. What `hd: true` changes is the preview: 200 px wide instead of 32 px, so the photo looks sharp before it finishes loading.
+
+---
+
+### 27. More built in
 
 - Encrypted message edits are decrypted and emitted as `messages.update`
 - `makeInMemoryStore` is included (bounded history, JSON snapshot)
@@ -522,7 +576,7 @@ Use responsibly and in accordance with WhatsApp's Terms of Service. Button, caro
 
 <div align="center">
 
-**DexBaileys v1.5.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
+**DexBaileys v1.6.0** — Maintained by Shyam Chaudhari (DEX SHYAM TECH)
 
 MIT licence · see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)
 

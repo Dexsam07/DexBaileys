@@ -193,6 +193,8 @@ export type AnyMediaMessageContent = (
 			image: WAMediaUpload
 			caption?: string
 			jpegThumbnail?: string
+			/** send with a larger, sharper preview. The file itself always goes out untouched */
+			hd?: boolean
 	  } & Mentionable &
 			Contextable &
 			WithDimensions)
@@ -201,6 +203,8 @@ export type AnyMediaMessageContent = (
 			caption?: string
 			gifPlayback?: boolean
 			jpegThumbnail?: string
+			/** send with a larger, sharper preview. The file itself always goes out untouched */
+			hd?: boolean
 			/** if set to true, will send as a `video note` */
 			ptv?: boolean
 	  } & Mentionable &

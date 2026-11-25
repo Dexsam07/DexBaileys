@@ -132,7 +132,7 @@ const extractVideoThumb = async (
 		})
 	})
 
-export const extractImageThumb = async (bufferOrFilePath: Readable | Buffer | string, width = 32) => {
+export const extractImageThumb = async (bufferOrFilePath: Readable | Buffer | string, width = 32, quality = 50) => {
 	// TODO: Move entirely to sharp, removing jimp as it supports readable streams
 	// This will have positive speed and performance impacts as well as minimizing RAM usage.
 	if (bufferOrFilePath instanceof Readable) {
@@ -144,7 +144,7 @@ export const extractImageThumb = async (bufferOrFilePath: Readable | Buffer | st
 		const img = lib.sharp.default(bufferOrFilePath)
 		const dimensions = await img.metadata()
 
-		const buffer = await img.resize(width).jpeg({ quality: 50 }).toBuffer()
+		const buffer = await img.resize(width).jpeg({ quality }).toBuffer()
 		return {
 			buffer,
 			original: {
@@ -160,7 +160,7 @@ export const extractImageThumb = async (bufferOrFilePath: Readable | Buffer | st
 		}
 		const buffer = await jimp
 			.resize({ w: width, mode: lib.jimp.ResizeStrategy.BILINEAR })
-			.getBuffer('image/jpeg', { quality: 50 })
+			.getBuffer('image/jpeg', { quality })
 		return {
 			buffer,
 			original: dimensions
@@ -330,12 +330,15 @@ export async function generateThumbnail(
 	mediaType: 'video' | 'image',
 	options: {
 		logger?: ILogger
+		/** build a larger, sharper preview (used by `hd: true`) */
+		hd?: boolean
 	}
 ) {
 	let thumbnail: string | undefined
 	let originalImageDimensions: { width: number; height: number } | undefined
+	const hd = options.hd === true
 	if (mediaType === 'image') {
-		const { buffer, original } = await extractImageThumb(file)
+		const { buffer, original } = hd ? await extractImageThumb(file, 200, 70) : await extractImageThumb(file)
 		thumbnail = buffer.toString('base64')
 		if (original.width && original.height) {
 			originalImageDimensions = {
@@ -346,7 +349,7 @@ export async function generateThumbnail(
 	} else if (mediaType === 'video') {
 		const imgFilename = join(getTmpFilesDirectory(), generateMessageIDV2() + '.jpg')
 		try {
-			await extractVideoThumb(file, imgFilename, '00:00:00', { width: 32, height: 32 })
+			await extractVideoThumb(file, imgFilename, '00:00:00', hd ? { width: 200, height: 200 } : { width: 32, height: 32 })
 			const buff = await fs.readFile(imgFilename)
 			thumbnail = buff.toString('base64')
 

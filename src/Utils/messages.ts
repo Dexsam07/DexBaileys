@@ -144,6 +144,9 @@ export const prepareWAMessageMedia = async (
 		media: (message as any)[mediaType]
 	}
 	delete (uploadData as any)[mediaType]
+	// `hd` only asks for a sharper preview; the media bytes are never re-encoded
+	const isHD = (uploadData as { hd?: boolean }).hd === true
+	delete (uploadData as { hd?: boolean }).hd
 	// check if cacheable + generate cache key
 	const cacheableKey =
 		typeof uploadData.media === 'object' &&
@@ -255,7 +258,7 @@ export const prepareWAMessageMedia = async (
 					const { thumbnail, originalImageDimensions } = await generateThumbnail(
 						originalFilePath!,
 						mediaType as 'image' | 'video',
-						options
+						{ logger, hd: isHD }
 					)
 					uploadData.jpegThumbnail = thumbnail
 					if (!uploadData.width && originalImageDimensions) {
